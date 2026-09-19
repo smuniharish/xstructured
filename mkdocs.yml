@@ -1,0 +1,87 @@
+site_name: xstructured
+site_description: Schema-guided structured output for LangChain v1 Runnables and agents
+site_url: https://xstructured.readthedocs.io/
+repo_name: xstructured/xstructured
+repo_url: https://github.com/xstructured/xstructured
+edit_uri: edit/main/docs/
+
+watch:
+  - src
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.sections
+    - search.suggest
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            members_order: source
+            heading_level: 3
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quickstart: getting-started/quickstart.md
+      - Installation: getting-started/installation.md
+  - Concepts:
+      - Overview: concepts/index.md
+      - Envelope protocol: concepts/envelope.md
+      - Parsing and recovery: concepts/parsing.md
+      - Repair versus recovery: concepts/repair.md
+      - Multiple payloads: concepts/multiple-payloads.md
+      - Schema fingerprinting: concepts/schema.md
+      - Streaming: concepts/streaming.md
+  - Architecture:
+      - Overview: architecture/overview.md
+  - Security: security.md
+  - Benchmarks: benchmarks.md
+  - Integrations:
+      - Overview: integrations/index.md
+      - Why xstructured?: integrations/why-xstructured.md
+      - LangChain Runnables: integrations/langchain.md
+      - Deep Agents: integrations/deepagents.md
+  - Examples:
+      - Overview: examples/index.md
+      - Single-agent extraction: examples/single-agent-extraction.md
+      - Multi-agent pipeline: examples/multi-agent-pipeline.md
+      - Deep Agents: examples/deep-agents.md
+      - LangGraph workflow: examples/langgraph-workflow.md
+      - RAG with citations: examples/rag-citations.md
+      - Incident analysis: examples/incident-analysis.md
+      - Streaming UI events: examples/streaming-ui-events.md
+      - Multiple payloads and repair: examples/multiple-payloads-repair.md
+      - Named envelopes: examples/named-envelopes.md
+  - API reference:
+      - Overview: api/index.md
+      - Core: api/core.md
+      - Envelope: api/envelope.md
+      - Parser: api/parser.md
+      - Schema: api/schema.md
+      - Streaming: api/streaming.md
+      - LangChain integration: api/langchain.md
+  - Development:
+      - Contributing: development/contributing.md

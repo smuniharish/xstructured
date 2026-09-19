@@ -1,0 +1,42 @@
+[
+  {
+    "name": "valid-json",
+    "text": "{\"name\":\"Ada\",\"score\":9}",
+    "expected": {"name": "Ada", "score": 9}
+  },
+  {
+    "name": "markdown-fence",
+    "text": "```json\n{\"name\":\"Ada\",\"score\":9}\n```",
+    "expected": {"name": "Ada", "score": 9}
+  },
+  {
+    "name": "surrounding-prose",
+    "text": "Result follows: {\"name\":\"Ada\",\"score\":9} End of result.",
+    "expected": {"name": "Ada", "score": 9}
+  },
+  {
+    "name": "xstructured-envelope",
+    "text": "Result: <xstructured>{\"name\":\"Ada\",\"score\":9}</xstructured>",
+    "expected": {"name": "Ada", "score": 9}
+  },
+  {
+    "name": "schema-invalid",
+    "text": "{\"name\":\"Ada\",\"score\":\"excellent\"}",
+    "expected": null
+  },
+  {
+    "name": "trailing-comma",
+    "text": "{\"name\":\"Ada\",\"score\":9,}",
+    "expected": null
+  },
+  {
+    "name": "truncated-json",
+    "text": "{\"name\":\"Ada\",\"score\":9",
+    "expected": null
+  },
+  {
+    "name": "multiple-bare-payloads",
+    "text": "{\"name\":\"Ada\",\"score\":9} {\"name\":\"Grace\",\"score\":10}",
+    "expected": null
+  }
+]

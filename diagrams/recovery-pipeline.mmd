@@ -1,0 +1,17 @@
+flowchart TD
+    Input["Untrusted model text"] --> Limit{"Within max_input_chars?"}
+    Limit -->|No| Reject["Raise ParseError"]
+    Limit -->|Yes| Envelope{"Complete envelope?"}
+    Envelope -->|Yes| Payload["Use enveloped payload"]
+    Envelope -->|No, optional| Original["Use full input"]
+    Envelope -->|No, required| Reject
+    Payload --> Candidates["Ordered candidates"]
+    Original --> Candidates
+    Candidates --> Exact["1. Exact text"]
+    Candidates --> Fence["2. Markdown fence body"]
+    Candidates --> Surround["3. Object or array substring"]
+    Exact --> Validate["JSON decode + schema validation"]
+    Fence --> Validate
+    Surround --> Validate
+    Validate -->|First valid candidate| Result["ParseResult"]
+    Validate -->|None valid| RecoveryError["Raise RecoveryError"]

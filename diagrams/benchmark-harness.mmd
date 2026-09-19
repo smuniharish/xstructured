@@ -1,0 +1,12 @@
+flowchart TD
+    Corpus["Local cases.json corpus"] --> Plain["json.loads + Pydantic"]
+    Corpus --> LCJson["LangChain JsonOutputParser + Pydantic"]
+    Corpus --> LCPydantic["LangChain PydanticOutputParser"]
+    Corpus --> XS["xstructured StructuredParser"]
+    Plain --> Judge["Shared expected-result judge"]
+    LCJson --> Judge
+    LCPydantic --> Judge
+    XS --> Judge
+    Judge --> Correctness["Correct operations"]
+    Judge --> Timing["Median and mean microseconds"]
+    Network["Network access"] -. "not used" .-> Corpus

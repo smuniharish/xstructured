@@ -1,0 +1,11 @@
+flowchart LR
+    Output["Model output"] --> Mode{"Explicit mode"}
+    Mode --> Single["Default: one unnamed envelope"]
+    Mode --> Array["multiple=True: one envelope with JSON array"]
+    Mode --> Named["multiple_envelopes=True: named envelopes"]
+    Single --> Parser["StructuredParser"]
+    Array --> ArrayParser["Validate every item"]
+    Named --> NamedParser["Validate each named payload"]
+    Parser --> One["One validated result"]
+    ArrayParser --> List["list[T]"]
+    NamedParser --> Map["dict[name, T]"]

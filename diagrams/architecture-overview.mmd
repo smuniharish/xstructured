@@ -1,0 +1,10 @@
+flowchart LR
+    Runnable["Wrapped Runnable\n(chat model, create_agent, deepagents)"] --> Wrapper["with_xstructured_output()"]
+    Schema["Pydantic v2 schema"] --> Instructions["schema_instructions()"]
+    Instructions -->|"SystemMessage injected"| Runnable
+    Wrapper --> Envelope["EnvelopeScanner"]
+    Envelope --> Parser["StructuredParser"]
+    Parser -->|"conservative recovery"| Result["XStructuredResult"]
+    Result --> Content["content (natural language)"]
+    Result --> Structured["structured (validated model)"]
+    Result --> Raw["raw (original message)"]

@@ -1,0 +1,12 @@
+{
+  "mermaidVersion": "11.17.0",
+  "configChecksum": "167620025201c2247b6d581d6ccff2090b8f1686e62f032b3381876dd2e11835",
+  "sources": {
+    "architecture-overview.mmd": "b7db28d1a17428649cc13bd8cb69616f72a18a8ad752ed1e1600a1eea4c9d2a9",
+    "benchmark-harness.mmd": "b74979bcb4fc3cbef7ddd291daf65e05068242d59c62fa76ba714efd64095e15",
+    "multiple-payloads.mmd": "51d8241bedf11df88ccdb83f9925d1488aec8fbf4cc868c889999b588a7d3686",
+    "recovery-pipeline.mmd": "9a66a1e8ef0800ef0a1b6ebea5374683cbad7d3d8abccc6ef323d5b743755974",
+    "security-boundaries.mmd": "b4207b438d84ebfb9d7ec58b87c3bdf3695b0a2decd3a9fe011899fd3c845f02",
+    "streaming-protocol.mmd": "0dcbb80bab3bb8b0f28a6bf128a02c7f0c41c3598343da5fcaeb5f97cf1403d0"
+  }
+}

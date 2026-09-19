@@ -1,0 +1,5 @@
+[flake8]
+max-line-length = 100
+extend-select = B950
+extend-ignore = E203, E501, W503
+exclude = .venv,.git,__pycache__,build,dist,docs/_build,site,src/xstructured.egg-info,node_modules,.pytest_cache,.ruff_cache,.mypy_cache

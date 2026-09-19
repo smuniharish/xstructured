@@ -1,0 +1,7 @@
+flowchart LR
+    Prompt["Application prompt"] --> Provider["Model provider"]
+    Provider -->|"untrusted text"| Limits["Size limit + envelope extraction"]
+    Limits --> Validation["JSON decode + Pydantic validation"]
+    Validation -->|"typed, not trusted"| Policy["Application authorization and business rules"]
+    Policy --> SideEffect["Database, tools, or external side effects"]
+    Secrets["Secrets"] -. "never place in schema instructions or fixtures" .-> Prompt

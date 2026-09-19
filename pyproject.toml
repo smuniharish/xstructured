@@ -1,0 +1,107 @@
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13"]
+build-backend = "uv_build"
+
+[project]
+name = "xstructured"
+version = "0.1.0"
+description = "Schema-guided structured output parsing and recovery for LangChain v1 Runnables and agents, validated against Pydantic v2 models."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "S MUNI HARISH", email = "samamuniharish@gmail.com" }]
+keywords = ["langchain", "langchain-core", "pydantic", "structured-output", "agents", "llm", "json-schema"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
+dependencies = [
+  "langchain>=1.0,<2",
+  "pydantic>=2.9,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/smuniharish/xstructured"
+Documentation = "https://xstructured.readthedocs.io"
+Repository = "https://github.com/smuniharish/xstructured"
+Issues = "https://github.com/smuniharish/xstructured/issues"
+Changelog = "https://github.com/smuniharish/xstructured/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+test = [
+  "hypothesis>=6.140,<7",
+  "pytest>=9.1,<10",
+  "pytest-asyncio>=1.2,<2",
+  "pytest-cov>=6,<7",
+]
+lint = [
+  # Pinned below 0.16: ruff 0.16.8 panics in its diagnostic renderer
+  # (ruff_annotate_snippets) on this repository; 0.15.x is confirmed stable.
+  "ruff>=0.15,<0.16",
+  "flake8>=7.3,<8",
+]
+types = [
+  "pyrefly>=1.3,<2",
+]
+docs = [
+  "mkdocs>=1.6,<2",
+  "mkdocs-material>=9.7,<10",
+  "mkdocstrings[python]>=1.0,<2",
+]
+dev = [
+  { include-group = "test" },
+  { include-group = "lint" },
+  { include-group = "types" },
+]
+examples = [
+  "langchain>=1.0,<2",
+  "langgraph>=1.0,<2",
+  "langchain-openai>=1.0,<2",
+  "deepagents>=0.7,<1",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+addopts = "-ra --strict-markers --strict-config"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = [".", "src"]
+markers = [
+  "live: requires a real LLM provider API key and performs network calls (deselect with '-m \"not live\"')",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["A", "B", "C4", "E", "F", "I", "PERF", "PIE", "PTH", "RUF", "SIM", "T20", "UP", "W"]
+ignore = ["S101", "UP040", "UP046", "UP047"]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/**/*.py" = ["T201"]
+"tests/**/*.py" = ["T20"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pyrefly]
+project-includes = ["src"]
+project-excludes = ["**/.venv/**", "**/build/**", "**/dist/**"]
+
+[tool.coverage.run]
+branch = true
+source = ["xstructured"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
