@@ -34,4 +34,5 @@ for the precise boundary.
 - [Benchmarks](benchmarks.md)
 - [LangChain integration](integrations/langchain.md)
 - [Examples](examples/index.md)
+- [Agent Skills](development/agent-skills.md)
 - [API reference](api/index.md)

@@ -84,4 +84,5 @@ nav:
       - Streaming: api/streaming.md
       - LangChain integration: api/langchain.md
   - Development:
+      - Agent Skills: development/agent-skills.md
       - Contributing: development/contributing.md
