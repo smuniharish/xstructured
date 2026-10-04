@@ -1,29 +1,42 @@
 [build-system]
-requires = ["uv_build>=0.12.15,<0.13"]
+requires = ["uv_build>=0.12.23,<0.13"]
 build-backend = "uv_build"
 
 [project]
 name = "xstructured"
 version = "0.1.0"
-description = "Schema-guided structured output parsing and recovery for LangChain v1 Runnables and agents, validated against Pydantic v2 models."
+description = "Schema-guided structured output for LangChain v1 Runnables and agents: validated Pydantic v2 data and natural-language text from one response, with conservative recovery and ordered streaming."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "S MUNI HARISH", email = "samamuniharish@gmail.com" }]
-keywords = ["langchain", "langchain-core", "pydantic", "structured-output", "agents", "llm", "json-schema"]
+keywords = [
+  "agents",
+  "json-schema",
+  "langchain",
+  "langchain-core",
+  "llm",
+  "pydantic",
+  "streaming",
+  "structured-output",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Python Modules",
   "Typing :: Typed",
 ]
 dependencies = [
-  "langchain>=1.0,<2",
-  "pydantic>=2.9,<3",
+  "langchain-core>=1.6.6,<2",
+  "pydantic>=2.13.5,<3",
 ]
 
 [project.urls]
@@ -31,77 +44,121 @@ Homepage = "https://github.com/smuniharish/xstructured"
 Documentation = "https://xstructured.readthedocs.io"
 Repository = "https://github.com/smuniharish/xstructured"
 Issues = "https://github.com/smuniharish/xstructured/issues"
-Changelog = "https://github.com/smuniharish/xstructured/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/smuniharish/xstructured/blob/master/CHANGELOG.md"
 
 [dependency-groups]
 test = [
-  "hypothesis>=6.140,<7",
-  "pytest>=9.1,<10",
-  "pytest-asyncio>=1.2,<2",
-  "pytest-cov>=6,<7",
+  "hypothesis>=6.168.3,<7",
+  "pytest>=9.1.1,<10",
+  "pytest-asyncio>=1.4.0,<2",
+  "pytest-cov>=7.1.0,<8",
 ]
 lint = [
-  # Pinned below 0.16: ruff 0.16.8 panics in its diagnostic renderer
-  # (ruff_annotate_snippets) on this repository; 0.15.x is confirmed stable.
-  "ruff>=0.15,<0.16",
-  "flake8>=7.3,<8",
+  "ruff>=0.16.10,<0.17",
 ]
 types = [
-  "pyrefly>=1.3,<2",
-]
-docs = [
-  "mkdocs>=1.6,<2",
-  "mkdocs-material>=9.7,<10",
-  "mkdocstrings[python]>=1.0,<2",
-]
-dev = [
-  { include-group = "test" },
-  { include-group = "lint" },
-  { include-group = "types" },
+  "pyrefly>=1.3.2,<2",
+  "types-pyyaml>=6.0.12.20260906",
 ]
 examples = [
-  "langchain>=1.0,<2",
-  "langgraph>=1.0,<2",
-  "langchain-openai>=1.0,<2",
-  "deepagents>=0.7,<1",
+  "deepagents>=0.7.21,<1",
+  "langchain>=1.4.3,<2",
+  "langchain-openai>=1.6.7,<2",
+  "langgraph>=1.2.12,<2",
+]
+docs = [
+  "griffe-pydantic>=1.3.1,<2",
+  "mkdocs>=1.6.1,<2",
+  "mkdocs-material>=9.7.7,<10",
+  "mkdocstrings>=1.0.6,<2",
+  "mkdocstrings-python>=2.0.9,<3",
+]
+dev = [
+  { include-group = "examples" },
+  { include-group = "lint" },
+  { include-group = "test" },
+  { include-group = "types" },
 ]
 
 [tool.uv]
 default-groups = ["dev"]
 
-[tool.pytest.ini_options]
+[tool.pytest]
 minversion = "9.0"
-addopts = "-ra --strict-markers --strict-config"
-asyncio_mode = "auto"
+addopts = ["-ra", "-m", "not live"]
+strict = true
 testpaths = ["tests"]
-pythonpath = [".", "src"]
+pythonpath = [".", "examples"]
+filterwarnings = ["error"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 markers = [
-  "live: requires a real LLM provider API key and performs network calls (deselect with '-m \"not live\"')",
+  "live: performs real network calls to the Experiential Labs provider; requires EXPLABS_API_KEY",
 ]
-
-[tool.ruff]
-line-length = 100
-target-version = "py312"
-
-[tool.ruff.lint]
-select = ["A", "B", "C4", "E", "F", "I", "PERF", "PIE", "PTH", "RUF", "SIM", "T20", "UP", "W"]
-ignore = ["S101", "UP040", "UP046", "UP047"]
-
-[tool.ruff.lint.per-file-ignores]
-"examples/**/*.py" = ["T201"]
-"tests/**/*.py" = ["T20"]
-
-[tool.ruff.format]
-docstring-code-format = true
-
-[tool.pyrefly]
-project-includes = ["src"]
-project-excludes = ["**/.venv/**", "**/build/**", "**/dist/**"]
 
 [tool.coverage.run]
 branch = true
 source = ["xstructured"]
 
 [tool.coverage.report]
+fail_under = 100
 show_missing = true
 skip_covered = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "@overload",
+]
+
+[tool.ruff]
+# Code is formatted to 80 columns so examples fit the documentation, GitHub, and
+# PyPI without horizontal scrolling.
+line-length = 80
+target-version = "py312"
+src = [".", "src", "examples"]
+# These pages include the example scripts with `--8<--` snippet directives, which
+# are valid Python expressions that the Markdown formatter would rewrite.
+extend-exclude = ["docs/examples/*.md"]
+
+[tool.ruff.lint]
+select = [
+  "A", "ANN", "ARG", "ASYNC", "B", "BLE", "C4", "D", "DTZ", "E", "ERA", "F", "FA", "FBT",
+  "FLY", "FURB", "G", "I", "ICN", "ISC", "LOG", "N", "PERF", "PGH", "PIE", "PL", "PT", "PTH",
+  "PYI", "Q", "RET", "RSE", "RUF", "S", "SIM", "SLF", "T10", "T20", "TC", "TID", "TRY", "UP",
+  "W", "YTT",
+]
+ignore = [
+  "ANN401",  # LangChain's Runnable API is typed with Any.
+  "D105",    # Magic methods are self-describing.
+  "D107",    # __init__ arguments are documented on the class.
+  "ISC001",  # Conflicts with the formatter.
+  "PLR0913", # Public constructors expose keyword-only configuration.
+  "TC001",   # Runtime imports keep annotations resolvable for docs and LangChain.
+  "TC002",
+  "TC003",
+  "TRY003",  # Exception messages carry the failing value.
+]
+
+[tool.ruff.lint.pycodestyle]
+# Long strings, comments, and docstrings the formatter cannot split.
+max-line-length = 100
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["benchmarks", "tests", "xstructured"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN", "ARG", "D", "FBT", "PLC0415", "PLR2004", "S101", "SLF001", "T20"]
+"examples/**/*.py" = ["D103", "E402", "PLC0415", "S101", "T201"]
+"benchmarks/**/*.py" = ["D", "T201"]
+"scripts/**/*.py" = ["D", "T201"]
+
+[tool.ruff.format]
+docstring-code-format = true
+line-ending = "lf"
+
+[tool.pyrefly]
+project-includes = ["src", "tests", "examples", "benchmarks"]
+project-excludes = ["**/.venv/**", "**/build/**", "**/dist/**", "**/site/**"]
+search-path = ["src", ".", "examples"]

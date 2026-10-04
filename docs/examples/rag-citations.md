@@ -1,37 +1,32 @@
-# RAG answer with citations
+# RAG with citations
 
-[`examples/rag_citations.py`](https://github.com/xstructured/xstructured/blob/main/examples/rag_citations.py)
-shows the final, provider-independent part of a RAG pipeline: retrieved
-documents are included in a prompt and the answer must contain citations.
+The final step of a retrieval-augmented pipeline: the model answers from retrieved
+documents and must cite them. The schema requires at least one citation, and the script
+verifies that each quote appears verbatim in the cited document.
 
-```python
-class Citation(BaseModel):
-    source_id: str
-    quote: str
-
-class CitedAnswer(BaseModel):
-    answer: str
-    citations: list[Citation] = Field(min_length=1)
-
-result = with_xstructured_output(model, CitedAnswer).invoke(
-    [HumanMessage(content=f"Use only these documents:\n{context}\n\nQuestion: {question}")]
-)
-for citation in result.structured.citations:
-    print(citation.source_id, citation.quote)
+```python title="examples/rag_citations.py"
+--8<-- "examples/rag_citations.py"
 ```
 
-Use your retriever in place of the small in-memory `DOCUMENTS` mapping in the
-complete example. The schema prevents a successful response from silently
-omitting evidence.
+## Output
 
-## Live run output
+=== "Live"
 
-The following output was captured from a live provider run. Each citation is
-still validated as a typed `Citation` value:
+    ```text
+    === RAG answer with citations (live: gpt-5.6-luna) ===
+    Answer: Before a production rollout, an approved change record is required. Deploys also use canary traffic for ten minutes before the full rollout.
+    [policy-4] Production changes require an approved change record. (verified: True)
+    [runbook-17] Deploys use canary traffic for ten minutes before full rollout. (verified: True)
+    ```
 
-```text
-=== RAG answer with citations ===
-Answer: A production rollout requires an approved change record and a ten-minute canary period.
-[policy-4] Production changes require an approved change record.
-[runbook-17] Deploys use canary traffic for ten minutes before full rollout.
-```
+=== "Offline"
+
+    ```text
+    === RAG answer with citations (offline: scripted model) ===
+    Answer: You need an approved change record, and the deploy must run on canary traffic for ten minutes before full rollout.
+    [policy-4] Production changes require an approved change record. (verified: True)
+    [runbook-17] Deploys use canary traffic for ten minutes before full rollout. (verified: True)
+    ```
+
+Schema validation guarantees the *shape* of the citations; checks such as "the quote
+exists in the source" belong in your application, as shown here.

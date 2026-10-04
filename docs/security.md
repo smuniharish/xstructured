@@ -1,29 +1,40 @@
 # Security
 
-![Security boundaries](assets/diagrams/security-boundaries.png)
+Model output is untrusted input. `xstructured` bounds, decodes, and validates it; it does
+**not** make it safe to act on.
 
-Model output is untrusted input. `xstructured` provides bounded extraction,
-strict JSON decoding, and Pydantic validation; it does **not** make model output
-safe to authorize actions.
+![Security boundaries](assets/diagrams/security-boundaries.png){ .diagram width="340" }
 
-## Guarantees and limits
+## What xstructured guarantees
 
-- `ParserConfig.max_input_chars` rejects oversized input before parsing.
-- Envelope closing delimiters inside JSON strings are ignored.
-- Pydantic validates types and constraints, and can forbid unknown fields.
-- Recovery never executes content and never rewrites malformed JSON.
-- The parser does not sanitize HTML, SQL, shell arguments, URLs, or file paths.
-- A schema-valid value may still violate application authorization or business
-  rules.
+- **Bounded work.** Input, envelope, payload, and nesting limits are enforced before or
+  during parsing, and scanning is linear-time with no regex backtracking, so oversized or
+  adversarial responses fail fast with `LimitExceededError`.
+- **Strict JSON.** Duplicate keys, `NaN`, `Infinity`, and numbers that overflow are
+  rejected, so two parsers can never disagree about what a payload means.
+- **No invented data.** Recovery only selects a substring of the response; it never
+  rewrites JSON or completes truncated output.
+- **Schema validation.** Every value passes Pydantic v2 validation of your schema.
+- **Quiet errors.** Exception messages never include the model output; it is available
+  separately as `error.text`.
+- **Opt-in model calls only.** Nothing besides your wrapped Runnable is called unless you
+  configure a repair Runnable, and oversized responses are never sent to it.
 
-Use strict schemas with bounded strings and collections where practical. Apply
-authorization and domain checks after parsing and before database writes, tool
-calls, filesystem access, or network requests. Never interpolate parsed values
-into commands or queries; use parameterized APIs.
+## What remains your responsibility
 
-Keep credentials out of prompts, schemas, benchmark fixtures, exceptions, and
-logs. The bundled [benchmark](benchmarks.md) uses only local synthetic data and
-makes no network requests.
+- **Authorization and business rules.** A schema-valid value can still request something
+  the user may not do. Check permissions and invariants before writing to a database,
+  calling a tool, or sending a request.
+- **Output encoding.** The parser does not sanitize HTML, SQL, shell arguments, URLs, or
+  file paths. Use parameterized queries and context-aware encoding.
+- **Prompt injection.** Text that reaches the model, including retrieved documents, can
+  steer what it produces. Validation constrains the shape of the answer, not its intent.
+- **Schema strictness.** Prefer bounded strings and collections, enums or `Literal` for
+  closed sets, and `extra="forbid"` where unknown fields indicate a problem.
+- **Secrets.** Keep credentials out of prompts, schemas, fixtures, and logs. Avoid
+  logging `error.text` or `result.raw_text` where model output may contain personal data.
 
-For ambiguous repeated envelopes, apply the
-[multiple-payload guidance](concepts/multiple-payloads.md).
+## Reporting a vulnerability
+
+Please report vulnerabilities privately as described in the repository's
+[security policy](https://github.com/smuniharish/xstructured/blob/master/SECURITY.md).

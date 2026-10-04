@@ -1,17 +1,31 @@
-"""Conservative candidate extraction for model-produced JSON."""
+"""Conservative recovery candidates for model-produced JSON."""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterator
 
-_FENCE = re.compile(r"^\s*```(?:json)?\s*\n(?P<body>.*?)\n?```\s*$", re.DOTALL | re.IGNORECASE)
+__all__ = ["recovery_candidates"]
+
+_FENCE = re.compile(
+    r"\A\s*```(?:json)?[ \t]*\n(?P<body>.*?)\n?```\s*\Z",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def recovery_candidates(
-    text: str, *, strip_markdown_fences: bool = True, strip_surrounding_text: bool = True
+    text: str,
+    *,
+    strip_markdown_fences: bool = True,
+    strip_surrounding_text: bool = True,
 ) -> Iterator[str]:
-    """Yield distinct plausible JSON documents without altering JSON syntax."""
+    """Yield distinct, non-empty candidate substrings of *text* in a fixed order.
+
+    The order is: the text as given, the body of a Markdown code fence that spans the
+    whole text, the outermost ``{...}`` substring, and the outermost ``[...]``
+    substring. Candidates are always substrings of *text* (stripped of surrounding
+    whitespace); JSON syntax is never rewritten.
+    """
     seen: set[str] = set()
 
     def emit(candidate: str) -> Iterator[str]:
@@ -21,14 +35,11 @@ def recovery_candidates(
             yield candidate
 
     yield from emit(text)
-    stripped = text.strip()
-    if strip_markdown_fences:
-        match = _FENCE.match(stripped)
-        if match:
-            yield from emit(match.group("body"))
+    if strip_markdown_fences and (match := _FENCE.match(text)) is not None:
+        yield from emit(match.group("body"))
     if strip_surrounding_text:
         for opening, closing in (("{", "}"), ("[", "]")):
-            start = stripped.find(opening)
-            end = stripped.rfind(closing)
-            if start >= 0 and end > start:
-                yield from emit(stripped[start : end + 1])
+            start = text.find(opening)
+            end = text.rfind(closing)
+            if 0 <= start < end:
+                yield from emit(text[start : end + 1])

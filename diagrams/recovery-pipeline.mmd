@@ -1,17 +1,22 @@
-flowchart TD
-    Input["Untrusted model text"] --> Limit{"Within max_input_chars?"}
-    Limit -->|No| Reject["Raise ParseError"]
-    Limit -->|Yes| Envelope{"Complete envelope?"}
-    Envelope -->|Yes| Payload["Use enveloped payload"]
-    Envelope -->|No, optional| Original["Use full input"]
-    Envelope -->|No, required| Reject
-    Payload --> Candidates["Ordered candidates"]
-    Original --> Candidates
-    Candidates --> Exact["1. Exact text"]
-    Candidates --> Fence["2. Markdown fence body"]
-    Candidates --> Surround["3. Object or array substring"]
-    Exact --> Validate["JSON decode + schema validation"]
-    Fence --> Validate
-    Surround --> Validate
-    Validate -->|First valid candidate| Result["ParseResult"]
-    Validate -->|None valid| RecoveryError["Raise RecoveryError"]
+flowchart TB
+    input(["Model output, untrusted"]) --> size{{"Within max_input_chars?"}}
+    size -->|no| limit["LimitExceededError"]
+    size -->|yes| configured{{"Envelope configured?"}}
+    configured -->|no| whole["Use the whole text"]
+    configured -->|yes| complete{{"Complete envelope?"}}
+    complete -->|yes| payload["Use the envelope payload"]
+    complete -->|"no, optional"| whole
+    complete -->|"no, required"| missing["ParseError"]
+    payload & whole --> candidates["`**Recovery candidates, in order**
+    1 · the text as given
+    2 · a fenced code block
+    3 · the outermost object
+    4 · the outermost array`"]
+    candidates --> valid{{"Strict JSON and Pydantic valid?"}}
+    valid -->|"first that passes"| ok(["ParseResult"])
+    valid -->|"none passes"| failed["RecoveryError"]
+
+    classDef error fill:#FEF2F2,stroke:#DC2626,color:#7F1D1D
+    classDef success fill:#ECFDF5,stroke:#059669,color:#064E3B
+    class limit,missing,failed error
+    class ok success

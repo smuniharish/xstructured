@@ -1,12 +1,20 @@
 {
-  "mermaidVersion": "11.17.0",
-  "configChecksum": "167620025201c2247b6d581d6ccff2090b8f1686e62f032b3381876dd2e11835",
+  "mermaidCli": "12.0.0",
+  "options": [
+    "--scale",
+    "2",
+    "--backgroundColor",
+    "white"
+  ],
+  "config": "29e8ed8d5315c1c1e9261da3ad91a5af06f6e6a02120e93cbe007905f58e2a20",
   "sources": {
-    "architecture-overview.mmd": "b7db28d1a17428649cc13bd8cb69616f72a18a8ad752ed1e1600a1eea4c9d2a9",
-    "benchmark-harness.mmd": "b74979bcb4fc3cbef7ddd291daf65e05068242d59c62fa76ba714efd64095e15",
-    "multiple-payloads.mmd": "51d8241bedf11df88ccdb83f9925d1488aec8fbf4cc868c889999b588a7d3686",
-    "recovery-pipeline.mmd": "9a66a1e8ef0800ef0a1b6ebea5374683cbad7d3d8abccc6ef323d5b743755974",
-    "security-boundaries.mmd": "b4207b438d84ebfb9d7ec58b87c3bdf3695b0a2decd3a9fe011899fd3c845f02",
-    "streaming-protocol.mmd": "0dcbb80bab3bb8b0f28a6bf128a02c7f0c41c3598343da5fcaeb5f97cf1403d0"
+    "architecture-overview.mmd": "f6f0f0fd3c4d05dfe47841c5a559e523771ea6fd2715064e7f54f2f900ea2fe6",
+    "benchmark-harness.mmd": "7ed7ab5dd84aa52c749dd53317a1ff0366d2347a384778476960c6e012291a20",
+    "multiple-payloads.mmd": "a712a011e6a12cebc02b26008b1bd49c423792c083dab16178147f33368e42cb",
+    "recovery-pipeline.mmd": "4c80e1b6cea74fb42ba0cc2d9537e1e0bcaabdb2fd82d33362a428002a9c031b",
+    "repair-flow.mmd": "29cc7cbe59fe5eae6c495b42e0f5ee8533f524e2a0fcf9170681d81bd382bfd1",
+    "request-lifecycle.mmd": "6b5f55df3d74fd4491eb38547ee08d387eae8a6c12f2be70a483878f1e8390a7",
+    "security-boundaries.mmd": "5c69fdde55c93159fdaae70e944a332ede257d9356338bb6fc086ff4fcaaaf7f",
+    "streaming-protocol.mmd": "c001b5cb51942c38b5f63553a7438a15dca77eed37786848181d9820e1e3a29c"
   }
 }

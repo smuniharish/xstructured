@@ -1,40 +1,62 @@
-"""Multiple separately named structured envelopes in one model response."""
+"""Read separately named envelopes, each validated against its own schema.
+
+Run it with ``uv run python examples/named_envelopes.py``.
+"""
 
 from __future__ import annotations
 
-from _shared import explabs_chat_model, print_result_header, require_env, require_package
+from typing import Literal
 
-require_package("langchain_openai", extra_group="examples")
-require_env("EXPLABS_API_KEY")
+from pydantic import BaseModel
 
-from pydantic import BaseModel  # noqa: E402
+from _shared import banner, chat_model
+from xstructured import with_xstructured_output
 
-from xstructured import with_xstructured_output  # noqa: E402
+SCRIPTED_REPLY = (
+    "Analysis: the error spike started with the 09:10 release.\n"
+    '<xstructured name="finding">'
+    '{"title": "Checkout regression in release 2026.09.18", "severity": "high"}'
+    "</xstructured>\n"
+    "Recommendation: keep the rollback and add a guard rail.\n"
+    '<xstructured name="recommendation">'
+    '{"owner": "platform", '
+    '"action": "Add a checkout canary to the deploy pipeline"}'
+    "</xstructured>"
+)
 
 
 class Finding(BaseModel):
+    """What went wrong."""
+
     title: str
-    severity: str
+    severity: Literal["low", "medium", "high"]
 
 
 class Recommendation(BaseModel):
+    """What to do next."""
+
     owner: str
     action: str
 
 
 def main() -> None:
     chain = with_xstructured_output(
-        explabs_chat_model(),
+        chat_model(SCRIPTED_REPLY),
         {"finding": Finding, "recommendation": Recommendation},
         multiple_envelopes=True,
     )
     result = chain.invoke(
-        "Analyze the checkout incident. Return separate named xstructured envelopes "
-        "for finding and recommendation."
+        "Incident report: release 2026.09.18 went out at 09:10 UTC. From "
+        "09:12, checkout errors rose to 35% for card payments only; rolling "
+        "back at 09:20 restored the baseline within five minutes. The release "
+        "changed the payment-provider client. Write a short analysis, then "
+        "give one finding and one recommendation."
     )
-    print_result_header("Multiple named envelopes")
-    print(f"Finding: {result.structured['finding']!r}")
-    print(f"Recommendation: {result.structured['recommendation']!r}")
+
+    banner("Multiple named envelopes")
+    for name, value in result.structured.items():
+        print(f"{name}: {value!r}")
+    print(f"Prose: {result.content.strip()!r}")
 
 
 if __name__ == "__main__":

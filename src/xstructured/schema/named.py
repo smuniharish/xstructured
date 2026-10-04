@@ -1,38 +1,44 @@
-"""Named multiple schema targets for a single, discriminated result.
+"""Named schema targets.
 
-`StructuredParser` and `XStructuredRunnable` still produce exactly one
-envelope and one JSON result per response (see ADR 0004). Named schemas let
-that single result be validated against one of several allowed shapes,
-selected by an explicit ``"schema"`` name carried inside the payload itself,
-instead of requiring every alternative to be folded by hand into one
-Pydantic discriminated union.
-
-A response using named schemas is one JSON object:
-
-    {"schema": "<name>", "payload": <value valid against schemas["<name>"]>}
-
-``<name>`` must be one of the configured names and ``<value>`` is validated
-against that name's schema target -- nothing else changes: recovery,
-envelope handling, and repair all continue to apply to the object as a
-whole.
+Named schemas let one response choose which of several schemas applies. In array and
+single-value modes the choice is carried inside the JSON payload as
+``{"schema": "<name>", "payload": <value>}``; with named envelopes it is carried by the
+envelope itself (``<xstructured name="<name>">``).
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from types import MappingProxyType
 
 from xstructured.core.errors import SchemaError
+from xstructured.envelope.spec import NAME_PATTERN
 
 from .introspection import SchemaInfo, SchemaTarget, inspect_schema
 
-NamedSchemaTargets: TypeAlias = Mapping[str, SchemaTarget]
+__all__ = [
+    "NamedSchemaSpec",
+    "NamedSchemaTargets",
+    "NamedSchemas",
+    "inspect_named_schemas",
+]
+
+type NamedSchemaTargets = Mapping[str, SchemaTarget]
+"""A mapping of schema names to schema targets."""
 
 
 @dataclass(frozen=True, slots=True)
 class NamedSchemaSpec:
-    """The discriminator and payload keys used to select among named schemas."""
+    """The JSON keys that carry the schema name and the payload.
+
+    Attributes:
+        schema_key: Key holding the schema name.
+        payload_key: Key holding the value validated against that schema.
+
+    Raises:
+        SchemaError: If a key is empty or both keys are equal.
+    """
 
     schema_key: str = "schema"
     payload_key: str = "payload"
@@ -44,34 +50,76 @@ class NamedSchemaSpec:
             raise SchemaError("Named schema keys must differ")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class NamedSchemas:
-    """A resolved, named set of possible schema targets for one response."""
+    """A resolved, immutable set of named schemas.
+
+    Names must be 1-64 characters from ``A-Z``, ``a-z``, ``0-9``, ``_``, ``.`` and ``-``.
+
+    Attributes:
+        schemas: Read-only mapping of names to resolved schemas.
+        spec: The keys used by the ``{"schema": ..., "payload": ...}`` form.
+
+    Raises:
+        SchemaError: If no schema is given or a name is invalid.
+    """
 
     schemas: Mapping[str, SchemaInfo]
     spec: NamedSchemaSpec = field(default_factory=NamedSchemaSpec)
 
+    def __post_init__(self) -> None:
+        if not self.schemas:
+            raise SchemaError("At least one named schema is required")
+        for name in self.schemas:
+            if (
+                not isinstance(name, str)
+                or NAME_PATTERN.fullmatch(name) is None
+            ):
+                raise SchemaError(
+                    f"Invalid schema name {name!r}: use 1-64 letters, digits, '_', '.' or '-'"
+                )
+        object.__setattr__(
+            self, "schemas", MappingProxyType(dict(self.schemas))
+        )
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """The configured names, sorted."""
+        return tuple(sorted(self.schemas))
+
     def resolve(self, name: str) -> SchemaInfo:
-        """Return the `SchemaInfo` registered under *name*.
+        """Return the schema registered under *name*.
 
         Raises:
-            SchemaError: if *name* is not one of the configured schema names.
+            SchemaError: If *name* is not configured.
         """
         try:
             return self.schemas[name]
         except KeyError:
             raise SchemaError(
-                f"{name!r} is not one of the configured schema names: {sorted(self.schemas)}"
+                f"{name!r} is not one of the configured schema names {list(self.names)}"
             ) from None
 
 
 def inspect_named_schemas(
-    targets: NamedSchemaTargets, *, spec: NamedSchemaSpec | None = None
+    targets: NamedSchemaTargets | NamedSchemas,
+    *,
+    spec: NamedSchemaSpec | None = None,
 ) -> NamedSchemas:
-    """Introspect every named schema target, failing fast on empty input."""
-    if not targets:
-        raise SchemaError("At least one named schema target is required")
+    """Resolve every named schema target.
+
+    Args:
+        targets: Mapping of names to schema targets, or an existing `NamedSchemas`.
+        spec: Keys for the ``{"schema": ..., "payload": ...}`` form. Defaults to the
+            existing spec, or to `NamedSchemaSpec()`.
+
+    Raises:
+        SchemaError: If *targets* is empty, a name is invalid, or a target cannot be
+            introspected.
+    """
+    if isinstance(targets, NamedSchemas):
+        return targets if spec is None else NamedSchemas(targets.schemas, spec)
     return NamedSchemas(
-        schemas={name: inspect_schema(target) for name, target in targets.items()},
-        spec=spec or NamedSchemaSpec(),
+        {name: inspect_schema(target) for name, target in targets.items()},
+        spec or NamedSchemaSpec(),
     )

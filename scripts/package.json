@@ -1,0 +1,20 @@
+{
+  "name": "xstructured-docs-tooling",
+  "private": true,
+  "description": "Pinned Node.js tooling that renders the documentation diagrams.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "diagrams": "node render-diagrams.mjs",
+    "diagrams:check": "node render-diagrams.mjs --check"
+  },
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "12.0.0",
+    "puppeteer": "25.12.0"
+  },
+  "allowScripts": {
+    "puppeteer@25.12.0": true
+  }
+}

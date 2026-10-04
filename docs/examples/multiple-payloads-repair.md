@@ -1,60 +1,36 @@
-# Multiple payloads and LLM-assisted repair
+# Multiple payloads and repair
 
-[`examples/multiple_payloads_repair.py`](https://github.com/xstructured/xstructured/blob/main/examples/multiple_payloads_repair.py)
-uses the configured OpenAI-compatible provider for both the primary model and
-the explicitly supplied repair Runnable:
+One response carries a JSON array whose items name their schema, so a single reply can mix
+`Finding` and `Action` values. A repair model gets at most two attempts to fix an invalid
+reply. In offline mode the scripted first reply is deliberately invalid (unquoted keys),
+so you can watch repair work.
 
-```python
-chain = with_xstructured_output(
-    model,
-    {"finding": Finding, "action": Action},
-    multiple=True,
-    repair=model,
-    repair_config=RepairConfig(max_attempts=2),
-)
-result = chain.invoke("Review this incident report and return every finding and action.")
+```python title="examples/multiple_payloads_repair.py"
+--8<-- "examples/multiple_payloads_repair.py"
 ```
 
-The primary response contains one `<xstructured>` envelope whose JSON value is
-an array. Each item is dispatched to its named Pydantic schema, so the result
-can contain heterogeneous `Finding` and `Action` values:
+## Output
 
-```python
-for item in result.structured:
-    print(item)
-```
+=== "Live"
 
-Repair is not unconditional. The second model call is made only if extraction,
-JSON decoding, or Pydantic validation fails. The repaired response is parsed
-with the same schemas and resource limits, and `result.repaired` records
-whether repair was needed. `max_attempts` bounds additional calls.
+    ```text
+    === Multiple payloads with bounded repair (live: gpt-5.6-luna) ===
+    - Finding(title='Checkout failures increased after the release', severity='high')
+    - Finding(title='Rollback restored the checkout error rate', severity='medium')
+    - Action(owner='Release engineering', action='Add and require a checkout canary check before the next deployment', priority='high')
+    Repaired: False (attempts: 0)
+    ```
 
-## Live run output
+=== "Offline"
 
-The following output was captured from a live provider run. Repair was
-configured but was not needed because the first response validated:
+    ```text
+    === Multiple payloads with bounded repair (offline: scripted model) ===
+    - Finding(title='Checkout failures rose after the release', severity='high')
+    - Finding(title='Rollback restored the error rate', severity='medium')
+    - Action(owner='release-engineering', action='Add a checkout canary before the next deploy', priority='high')
+    Repaired: True (attempts: 1)
+    ```
 
-```text
-=== Multiple payloads with LLM-assisted repair ===
-Validated payload count: 3
-- Finding(title='Checkout failures increased after the release', severity='high', evidence='Checkout failures rose following the release.')
-- Finding(title='Rollback reduced checkout errors', severity='high', evidence='Error rates decreased after the rollback.')
-- Action(owner='Release engineering', action='Add a canary check before the next deployment', priority='high')
-Repair attempted: False
-```
-
-When a provider returns malformed or schema-invalid output on the first call,
-the same example may instead report `Repair attempted: True`.
-
-## Run with a real provider
-
-```powershell
-uv sync --group examples
-$env:EXPLABS_API_KEY = "..."
-$env:EXPLABS_MODEL = "gpt-5.6-luna"
-$env:EXPLABS_BASE_URL = "https://api.experientiallabs.ai/v1"
-uv run python examples/multiple_payloads_repair.py
-```
-
-The credential is read locally and is never part of the package or
-documentation.
+The live model produced a valid response first time, so repair was never called. Repair
+only runs after parsing and recovery fail, and its output is validated by the same parser.
+See [Bounded repair](../guide/repair.md).

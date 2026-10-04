@@ -1,68 +1,122 @@
 # Quickstart
 
+## Wrap a chat model
+
+Any Runnable whose output is a string or a LangChain message can be wrapped. The wrapper
+adds the schema instructions to the input and validates the response.
+
 ```python
-from langchain_core.messages import HumanMessage
-from langchain_core.runnables import RunnableLambda
-from langchain.agents import create_agent
+from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
 
 from xstructured import with_xstructured_output
 
 
-class ContactInfo(BaseModel):
+class Contact(BaseModel):
     name: str
     email: str
+    company: str | None = None
 
 
-agent = create_agent(model="openai:gpt-4o-mini", tools=[])
+model = init_chat_model("openai:gpt-5-mini")
+extractor = with_xstructured_output(model, Contact)
+result = extractor.invoke(
+    "Please loop in Priya Shah (priya.shah@example.com) from Acme Corp "
+    "on the review."
+)
+
+print(result.structured)  # Contact(name='Priya Shah', ...)
+print(result.content)  # The model's natural-language reply, envelope removed.
+print(result.raw)  # The original AIMessage.
+```
+
+The input can be a string, a `PromptValue`, or a list of messages (including tuples such
+as `("human", "...")`). Message inputs get the instructions as a system message.
+
+## Wrap a chain
+
+Wrap the whole chain so the instructions reach the model and its output is validated. A
+chain that starts with a prompt template takes a dictionary, which the wrapper cannot add
+instructions to, so put them in the prompt yourself and disable injection:
+
+```python
+from langchain_core.prompts import ChatPromptTemplate
+
+from xstructured import EnvelopeSpec, schema_instructions
+
+instructions = schema_instructions(Contact, envelope=EnvelopeSpec())
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You extract contact details.\n\n{instructions}"),
+        ("human", "{message}"),
+    ]
+).partial(instructions=instructions)
+
+chain = with_xstructured_output(
+    prompt | init_chat_model("openai:gpt-5-mini"),
+    Contact,
+    inject_instructions=False,
+)
+result = chain.invoke({"message": "Reach Priya at priya.shah@example.com."})
+```
+
+!!! tip
+    If you leave injection on and pass an input that cannot carry instructions, such as a
+    dictionary, the wrapper raises a `TypeError` before calling the model, so a missing
+    instruction never turns into a confusing parsing failure.
+
+## Wrap an agent
+
+`create_agent` graphs exchange `{"messages": [...]}` state. Adapt the graph to a
+message-in, message-out Runnable at its boundary:
+
+```python
+from langchain.agents import create_agent
+from langchain_core.runnables import RunnableLambda
+
+agent = create_agent(model="openai:gpt-5-mini", tools=[])
 
 
 def run_agent(messages):
-    # create_agent's compiled graph takes/returns a {"messages": [...]} state,
-    # so it is adapted to the plain-message Runnable contract xstructured expects.
-    state = agent.invoke({"messages": list(messages)})
-    return state["messages"][-1]
+    return agent.invoke({"messages": list(messages)})["messages"][-1]
 
 
-extractor = with_xstructured_output(RunnableLambda(run_agent), ContactInfo)
-
-result = extractor.invoke(
-    [HumanMessage(content="Reach Priya Shah at priya.shah@example.com.")]
-)
-
-print(result.structured)  # ContactInfo(name='Priya Shah', email='priya.shah@example.com')
-print(result.content)     # the agent's natural-language reply, envelope stripped
-print(result.raw)         # the original AIMessage
+extractor = with_xstructured_output(RunnableLambda(run_agent), Contact)
 ```
 
-See [`examples/single_agent_extraction.py`](https://github.com/xstructured/xstructured/blob/main/examples/single_agent_extraction.py)
-for a runnable version of this snippet, and
-[the LangChain integration guide](../integrations/langchain.md) for the full
-`invoke`/`ainvoke`/`batch`/`abatch`/`stream`/`astream` contract.
+See [Agents and Deep Agents](../integrations/agents.md) for details.
 
-## Without an agent
-
-`with_xstructured_output` composes with *any* `Runnable` that returns a
-string or a `BaseMessage` -- including a bare chat model:
+## Stream text and data
 
 ```python
-from langchain.chat_models import init_chat_model
-from xstructured import with_xstructured_output
+from xstructured import StreamEventKind
 
-model = init_chat_model("openai:gpt-4o-mini")
-extractor = with_xstructured_output(model, ContactInfo)
-result = extractor.invoke("Reach Priya Shah at priya.shah@example.com.")
+message = "Add Priya Shah (priya.shah@example.com) to the review."
+for event in extractor.stream(message):
+    if event.kind is StreamEventKind.TEXT_DELTA:
+        print(event.text, end="")
+    elif event.kind is StreamEventKind.STRUCTURED_END:
+        print("\nValidated:", event.structured)
 ```
 
-## Parsing text you already have
+## Parse text you already have
 
-If you already have model output as text (for example from a provider SDK
-you are calling directly), use `StructuredParser` without the `Runnable`
-wrapper:
+Without LangChain, `StructuredParser` validates text from any source:
 
 ```python
 from xstructured import StructuredParser
 
-result = StructuredParser(ContactInfo).parse(model_output_text)
-print(result.value)  # ContactInfo(...)
+parser = StructuredParser(Contact)
+reply = (
+    "Sure!\n"
+    "```json\n"
+    '{"name": "Priya Shah", "email": "priya.shah@example.com"}\n'
+    "```"
+)
+result = parser.parse(reply)
+
+print(result.value)  # Contact(name='Priya Shah', ..., company=None)
+print(result.recovered)  # True: the JSON was found inside a Markdown fence.
 ```
+
+Next, read the [user guide](../guide/index.md) or browse the [examples](../examples/index.md).

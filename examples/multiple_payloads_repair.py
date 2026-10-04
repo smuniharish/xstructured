@@ -1,67 +1,75 @@
-"""Multiple structured payloads with an optional real-LLM repair fallback.
+"""Validate several typed payloads from one response, with bounded LLM repair.
 
-This example uses the OpenAI-compatible Experiential Labs endpoint for both
-the primary response and the opt-in repair response. Repair is only called if
-the primary response cannot be parsed and validated.
+The response carries one JSON array whose items are tagged with a schema
+name, so a single reply can mix ``Finding`` and ``Action`` values. If the
+response is invalid, a repair model is asked to correct it, at most twice. In
+offline mode the scripted first reply contains invalid JSON, so repair runs.
 
-Requires EXPLABS_API_KEY. Install the example dependencies first:
-
-    uv sync --group examples
-    $env:EXPLABS_API_KEY = "..."
-    uv run python examples/multiple_payloads_repair.py
+Run it with ``uv run python examples/multiple_payloads_repair.py``.
 """
 
 from __future__ import annotations
 
-from _shared import explabs_chat_model, print_result_header, require_env, require_package
+from typing import Literal
 
-require_package("langchain_openai", extra_group="examples")
-require_env("EXPLABS_API_KEY")
+from pydantic import BaseModel
 
-from pydantic import BaseModel, Field  # noqa: E402
+from _shared import banner, chat_model, is_live
+from xstructured import RepairConfig, with_xstructured_output
 
-from xstructured import RepairConfig, with_xstructured_output  # noqa: E402
+INVALID_REPLY = (
+    "Two findings and one action.\n"
+    "<xstructured>[{schema: 'finding', payload: {title: 'Checkout errors'}}]"
+    "</xstructured>"
+)
+REPAIRED_REPLY = (
+    "<xstructured>["
+    '{"schema": "finding", "payload": '
+    '{"title": "Checkout failures rose after the release", '
+    '"severity": "high"}},'
+    '{"schema": "finding", "payload": '
+    '{"title": "Rollback restored the error rate", "severity": "medium"}},'
+    '{"schema": "action", "payload": {"owner": "release-engineering", '
+    '"action": "Add a checkout canary before the next deploy", '
+    '"priority": "high"}}'
+    "]</xstructured>"
+)
 
 
 class Finding(BaseModel):
-    """A finding extracted from a report."""
+    """Something observed in the incident."""
 
     title: str
-    severity: str
-    evidence: str
+    severity: Literal["low", "medium", "high"]
 
 
 class Action(BaseModel):
-    """A follow-up action extracted from a report."""
+    """A follow-up task."""
 
     owner: str
     action: str
-    priority: str = Field(pattern="^(high|medium|low)$")
+    priority: Literal["low", "medium", "high"]
 
 
 def main() -> None:
-    model = explabs_chat_model()
+    model = chat_model(INVALID_REPLY)
     chain = with_xstructured_output(
         model,
         {"finding": Finding, "action": Action},
         multiple=True,
-        repair=model,
+        repair=model if is_live() else chat_model(REPAIRED_REPLY),
         repair_config=RepairConfig(max_attempts=2),
     )
     result = chain.invoke(
-        "Review this incident report and return every finding and follow-up action. "
-        "Use one xstructured envelope containing an array. Each array item must be "
-        "tagged with schema='finding' or schema='action'. Include concise evidence "
-        "for findings and an owner for actions. "
-        "Report: checkout failures rose after the release; rollback reduced errors; "
-        "add a canary check before the next deployment."
+        "Review this incident: checkout failures rose after the release, a "
+        "rollback restored the error rate, and a canary check should be "
+        "added before the next deploy."
     )
 
-    print_result_header("Multiple payloads with LLM-assisted repair")
-    print(f"Validated payload count: {len(result.structured)}")
+    banner("Multiple payloads with bounded repair")
     for item in result.structured:
         print(f"- {item!r}")
-    print(f"Repair attempted: {result.repaired}")
+    print(f"Repaired: {result.repaired} (attempts: {result.repair_attempts})")
 
 
 if __name__ == "__main__":

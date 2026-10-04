@@ -1,88 +1,177 @@
 site_name: xstructured
-site_description: Schema-guided structured output for LangChain v1 Runnables and agents
+site_description: Schema-guided structured output for LangChain v1 Runnables and agents.
 site_url: https://xstructured.readthedocs.io/
-repo_name: xstructured/xstructured
-repo_url: https://github.com/xstructured/xstructured
-edit_uri: edit/main/docs/
+site_author: S MUNI HARISH
+repo_name: smuniharish/xstructured
+repo_url: https://github.com/smuniharish/xstructured
+edit_uri: edit/master/docs/
+copyright: Copyright &copy; 2026 S MUNI HARISH &middot; Apache-2.0
 
 watch:
   - src
+  - README.md
+  - CHANGELOG.md
 
 theme:
   name: material
+  font: false
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
   features:
+    - content.code.annotate
     - content.code.copy
+    - content.tabs.link
     - navigation.footer
+    - navigation.indexes
+    - navigation.instant
     - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
     - search.suggest
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/smuniharish/xstructured
+      name: Source on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/xstructured/
+      name: xstructured on PyPI
 
 plugins:
   - search
   - mkdocstrings:
+      default_handler: python
       handlers:
         python:
+          paths: [src]
+          inventories:
+            - https://docs.python.org/3/objects.inv
           options:
             docstring_style: google
-            show_source: false
-            show_root_heading: true
-            show_root_full_path: false
+            docstring_section_style: list
+            extensions:
+              - griffe_pydantic:
+                  schema: false
+            filters: ["!^_"]
+            heading_level: 2
+            inherited_members: false
+            members_order: source
             merge_init_into_class: true
             separate_signature: true
+            line_length: 80
+            show_if_no_docstring: false
+            show_overloads: false
+            show_root_full_path: false
+            show_root_heading: true
             show_signature_annotations: true
+            show_source: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
             signature_crossrefs: true
-            members_order: source
-            heading_level: 3
+            summary: true
+            unwrap_annotated: true
 
 markdown_extensions:
+  - abbr
   - admonition
   - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.betterem
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets:
+      base_path: [.]
+      check_paths: true
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
-  - toc:
-      permalink: true
 
 nav:
   - Home: index.md
   - Getting started:
-      - Quickstart: getting-started/quickstart.md
+      - getting-started/index.md
       - Installation: getting-started/installation.md
-  - Concepts:
-      - Overview: concepts/index.md
-      - Envelope protocol: concepts/envelope.md
-      - Parsing and recovery: concepts/parsing.md
-      - Repair versus recovery: concepts/repair.md
-      - Multiple payloads: concepts/multiple-payloads.md
-      - Schema fingerprinting: concepts/schema.md
-      - Streaming: concepts/streaming.md
-  - Architecture:
-      - Overview: architecture/overview.md
-  - Security: security.md
-  - Benchmarks: benchmarks.md
+      - Quickstart: getting-started/quickstart.md
+  - User guide:
+      - guide/index.md
+      - Envelopes: guide/envelopes.md
+      - Parsing and recovery: guide/parsing.md
+      - Schemas and instructions: guide/schemas.md
+      - Multiple payloads: guide/multiple-payloads.md
+      - Streaming: guide/streaming.md
+      - Bounded repair: guide/repair.md
+      - Configuration and limits: guide/configuration.md
+      - Error handling: guide/errors.md
+      - Observability: guide/observability.md
   - Integrations:
-      - Overview: integrations/index.md
-      - Why xstructured?: integrations/why-xstructured.md
+      - integrations/index.md
       - LangChain Runnables: integrations/langchain.md
-      - Deep Agents: integrations/deepagents.md
+      - Agents and Deep Agents: integrations/agents.md
+      - LangGraph: integrations/langgraph.md
+      - Why xstructured?: integrations/why-xstructured.md
   - Examples:
-      - Overview: examples/index.md
+      - examples/index.md
       - Single-agent extraction: examples/single-agent-extraction.md
       - Multi-agent pipeline: examples/multi-agent-pipeline.md
-      - Deep Agents: examples/deep-agents.md
+      - Deep Agents research: examples/deep-agent.md
       - LangGraph workflow: examples/langgraph-workflow.md
       - RAG with citations: examples/rag-citations.md
       - Incident analysis: examples/incident-analysis.md
       - Streaming UI events: examples/streaming-ui-events.md
       - Multiple payloads and repair: examples/multiple-payloads-repair.md
       - Named envelopes: examples/named-envelopes.md
+  - Architecture: architecture.md
+  - Security: security.md
+  - Benchmarks: benchmarks.md
   - API reference:
-      - Overview: api/index.md
-      - Core: api/core.md
-      - Envelope: api/envelope.md
-      - Parser: api/parser.md
-      - Schema: api/schema.md
+      - api/index.md
+      - Runnable integration: api/runnable.md
+      - Parsing: api/parsing.md
+      - Envelopes: api/envelopes.md
+      - Schemas: api/schemas.md
       - Streaming: api/streaming.md
-      - LangChain integration: api/langchain.md
-  - Development:
-      - Agent Skills: development/agent-skills.md
-      - Contributing: development/contributing.md
+      - Configuration: api/configuration.md
+      - Results: api/results.md
+      - Errors: api/errors.md
+  - Project:
+      - Agent Skill: agent-skill.md
+      - Changelog: changelog.md
+      - Contributing: contributing.md

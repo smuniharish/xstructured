@@ -1,7 +1,18 @@
-flowchart LR
-    Prompt["Application prompt"] --> Provider["Model provider"]
-    Provider -->|"untrusted text"| Limits["Size limit + envelope extraction"]
-    Limits --> Validation["JSON decode + Pydantic validation"]
-    Validation -->|"typed, not trusted"| Policy["Application authorization and business rules"]
-    Policy --> SideEffect["Database, tools, or external side effects"]
-    Secrets["Secrets"] -. "never place in schema instructions or fixtures" .-> Prompt
+flowchart TB
+    provider(["Model provider"]) -->|"untrusted text"| xs
+    subgraph xs ["xstructured"]
+        direction TB
+        limits["`**Resource limits**
+        input · envelope · payload · nesting`"]
+        strict["`**Strict JSON**
+        no duplicate keys, NaN, or overflow`"]
+        pydantic["`**Pydantic validation**
+        types and constraints`"]
+        limits --> strict --> pydantic
+    end
+    xs -->|"typed, still untrusted"| policy["`**Your application**
+    authorization and business rules`"]
+    policy --> effects(["Database writes · tool calls · side effects"])
+
+    classDef app fill:#FFF7ED,stroke:#D97706,color:#7C2D12
+    class policy app

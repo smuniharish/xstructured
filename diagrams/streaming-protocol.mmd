@@ -1,16 +1,17 @@
 sequenceDiagram
-    participant U as Caller
-    participant W as XStructuredRunnable
-    participant R as Wrapped Runnable
+    participant UI as Caller
+    participant X as XStructuredRunnable
+    participant M as Wrapped Runnable
     participant D as StreamDecoder
 
-    U->>W: stream(input)
-    W->>R: stream(prepared_input)
-    loop each chunk
-        R-->>W: text chunk
-        W->>D: feed(chunk)
-        D-->>U: TEXT_DELTA / STRUCTURED_START / STRUCTURED_DELTA / STRUCTURED_END
+    UI->>X: stream(input)
+    X->>M: stream(prepared input)
+    loop every chunk
+        M-->>X: chunk
+        X->>D: feed(text)
+        D-->>X: events
+        X-->>UI: TEXT_DELTA<br/>STRUCTURED_*
     end
-    W->>D: finalize()
-    D-->>U: trailing TEXT_DELTA (if any)
-    W-->>U: RESULT (XStructuredResult)
+    X->>D: finalize()
+    X-->>UI: RESULT
+    Note over X,D: The payload is validated once,<br/>as soon as the envelope closes.

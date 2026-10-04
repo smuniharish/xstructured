@@ -1,6 +1,5 @@
-"""JSON parser and conservative recovery strategies."""
+"""Schema-aware parsing with conservative recovery."""
 
 from .parser import StructuredParser
-from .recovery import recovery_candidates
 
-__all__ = ["StructuredParser", "recovery_candidates"]
+__all__ = ["StructuredParser"]

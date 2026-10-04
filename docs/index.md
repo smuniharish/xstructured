@@ -1,38 +1,137 @@
+---
+hide:
+  - navigation
+  - toc
+---
+
+<div class="xs-hero" markdown>
+
 # xstructured
 
-`xstructured` is a schema-guided structured output layer for
-[LangChain v1](https://docs.langchain.com/oss/python/releases/langchain-v1)
-`Runnable`s and agents. It wraps any chat model, `create_agent` agent, or
-custom `Runnable` so its natural-language output is turned into a validated
-[Pydantic v2](https://docs.pydantic.dev/latest/) object.
+<p class="xs-tagline">
+Validated Pydantic data <strong>and</strong> natural-language text from one LLM response.
+Wrap any LangChain v1 Runnable, chat model, or agent; get typed results that survive
+Markdown fences, chatty prose, and token-by-token streaming.
+</p>
 
-It does not call a model provider itself, and it is not a replacement for
-`create_agent`'s built-in `output_schema` -- see
-[Why wrap instead of `output_schema`?](integrations/langchain.md#why-wrap-instead-of-output_schema)
-for the precise boundary.
+[Get started](getting-started/index.md){ .md-button .md-button--primary }
+[Browse examples](examples/index.md){ .md-button }
+[API reference](api/index.md){ .md-button }
 
-## What it adds on top of a Runnable
+</div>
 
-- **Envelope protocol** -- a delimited region (`<xstructured>...</xstructured>`
-  by default) that reliably separates structured JSON from surrounding
-  natural-language text, even mid-stream.
-- **Conservative recovery** -- markdown code fences and prose around a JSON
-  payload are stripped without altering JSON syntax, before validation.
-- **Ordered streaming** -- `.stream()`/`.astream()` yield `TEXT_DELTA`,
-  `STRUCTURED_START`, `STRUCTURED_DELTA`, `STRUCTURED_END`, and `RESULT`
-  events in the order the underlying text arrived.
-- **Schema fingerprinting** -- a deterministic hash of a schema's JSON
-  Schema, for cache keys, telemetry, and detecting schema drift.
+## Why xstructured
 
-## Start here
+<div class="grid cards" markdown>
 
-- [Installation](getting-started/installation.md)
-- [Quickstart](getting-started/quickstart.md)
-- [Concepts](concepts/index.md)
-- [Architecture overview](architecture/overview.md)
-- [Security](security.md)
-- [Benchmarks](benchmarks.md)
-- [LangChain integration](integrations/langchain.md)
-- [Examples](examples/index.md)
-- [Agent Skills](development/agent-skills.md)
-- [API reference](api/index.md)
+-   :material-shield-check:{ .lg .middle } __Validated, never guessed__
+
+    ---
+
+    Every value passes strict JSON decoding and Pydantic v2 validation in JSON mode.
+    Recovery only chooses *which* part of a response to parse; it never rewrites JSON.
+
+-   :material-text-box-check-outline:{ .lg .middle } __Prose and data together__
+
+    ---
+
+    The model answers in its own words and places a JSON payload in an envelope.
+    You get both: `result.content` for people and `result.structured` for code.
+
+-   :material-lightning-bolt:{ .lg .middle } __Ordered streaming__
+
+    ---
+
+    Stream text deltas to your UI while the structured payload arrives, then receive the
+    validated value the moment its envelope closes.
+
+-   :material-puzzle-outline:{ .lg .middle } __Composes with LangChain__
+
+    ---
+
+    A standard Runnable: `invoke`, `batch`, `stream`, async variants, tracing,
+    retries, fallbacks, and composition all behave natively.
+
+-   :material-lock-outline:{ .lg .middle } __Bounded by design__
+
+    ---
+
+    Input, envelope, payload, and nesting limits; duplicate keys, `NaN`, and overflowing
+    numbers are rejected before validation.
+
+-   :material-wrench-check-outline:{ .lg .middle } __Optional, bounded repair__
+
+    ---
+
+    When recovery is not enough, an opt-in repair Runnable gets a fixed number of
+    attempts, and its output is held to the same schema.
+
+</div>
+
+## Thirty-second tour
+
+=== "pip"
+
+    ```bash
+    pip install xstructured
+    ```
+
+=== "uv"
+
+    ```bash
+    uv add xstructured
+    ```
+
+```python
+from langchain.chat_models import init_chat_model
+from pydantic import BaseModel
+
+from xstructured import with_xstructured_output
+
+
+class Contact(BaseModel):
+    name: str
+    email: str
+
+
+model = init_chat_model("openai:gpt-5-mini")
+extractor = with_xstructured_output(model, Contact)
+result = extractor.invoke(
+    "Please add Priya Shah (priya.shah@example.com) to the review."
+)
+
+result.structured  # Contact(name='Priya Shah', email='priya.shah@example.com')
+result.content  # "I've noted Priya Shah's details." (the model's own words)
+```
+
+![How a request flows through xstructured](assets/diagrams/architecture-overview.png){ .diagram width="596" }
+
+## Where to go next
+
+<div class="grid cards" markdown>
+
+-   :material-rocket-launch-outline: __[Quickstart](getting-started/quickstart.md)__
+
+    Wrap a chat model, a chain, or an agent in a few lines.
+
+-   :material-book-open-variant: __[User guide](guide/index.md)__
+
+    Envelopes, recovery, schemas, streaming, repair, limits, and errors.
+
+-   :material-connection: __[Integrations](integrations/index.md)__
+
+    LangChain Runnables, `create_agent`, Deep Agents, and LangGraph.
+
+-   :material-flask-outline: __[Examples](examples/index.md)__
+
+    Nine runnable applications, from agent extraction to streaming UIs.
+
+-   :material-speedometer: __[Benchmarks](benchmarks.md)__
+
+    Correctness and latency against plain JSON and LangChain's parsers.
+
+-   :material-api: __[API reference](api/index.md)__
+
+    Every public class and function, with parameters and examples.
+
+</div>

@@ -1,88 +1,82 @@
 # Contributing
 
-Thank you for improving `xstructured`. Contributions should preserve its
-narrow focus -- schema-guided structured output for `langchain-core`
-`Runnable`s -- and avoid growing it into an agent framework, a provider SDK,
-or a prompt-engineering library.
+Thank you for improving xstructured. Contributions should keep its focus: a small,
+dependable response contract for LangChain Runnables, not an agent framework, a provider
+SDK, or a prompt library. Please open an issue to discuss new public APIs or behavior
+changes before sending a pull request.
 
-## Before opening a change
+## Set up
 
-1. Read the [architecture overview](docs/architecture/overview.md).
-2. Discuss material API changes (new public symbols, changed signatures, new
-   required dependencies) in an issue first.
-3. Keep a change focused; include tests and documentation for public
-   behavior changes.
-
-## Development
+The project uses [uv](https://docs.astral.sh/uv/) and supports Python 3.12 to 3.14.
 
 ```bash
+git clone https://github.com/smuniharish/xstructured.git
+cd xstructured
 uv sync
-uv run ruff check .
-uv run ruff format --check .
-uv run flake8 .
-uv run pyrefly check
-uv run pytest -m "not live"
 ```
 
-Requires Python 3.11 or newer. Do not commit credentials, `.venv`,
-`__pycache__`, or generated build output (see [.gitignore](.gitignore)).
+`uv sync` installs the package in editable mode with the test, lint, type-checking, and
+example dependencies.
 
-`ruff` is pinned to `>=0.15,<0.16` in `pyproject.toml`: `ruff` 0.16.x panics
-on this repository's `ruff format --check .` (an upstream renderer bug, not
-a repository issue). Do not bump past `<0.16` without re-verifying against
-a fixed release.
+## Check your change
 
-## Documentation and diagrams
+Run the same checks as continuous integration:
 
-Build the documentation with the docs dependency group:
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run pyrefly check
+uv run pytest --cov
+```
+
+- Coverage must stay at **100%** of lines and branches.
+- `HYPOTHESIS_PROFILE=ci` runs the property-based tests with more examples, as in CI.
+- `uv run pytest -m live` runs the examples against the live Experiential Labs API; it
+  needs `EXPLABS_API_KEY` and is never part of the default run.
+
+Warnings are errors in the test suite, so deprecated APIs are caught early.
+
+## Documentation
+
+The documentation is built with MkDocs Material. Code blocks are tested: every Python
+block must compile and use real APIs, pages that start with `<!-- docs-test: run -->`
+are executed, and so are the examples in docstrings. Code in the documentation,
+README, and examples fits 80 columns (Ruff formats it); program output in `text`
+blocks wraps instead.
 
 ```bash
 uv sync --group docs
+uv run mkdocs serve
 uv run mkdocs build --strict
 ```
 
-Architecture diagrams are Mermaid source files under [`diagrams/`](diagrams).
-Render their PNG counterparts (committed under
-[`docs/assets/diagrams/`](docs/assets/diagrams)) with:
+Diagrams are Mermaid sources in
+[`diagrams/`](https://github.com/smuniharish/xstructured/tree/master/diagrams), rendered to
+PNG at twice their size with a pinned Mermaid CLI. Commit each source together with its
+rendered image, and embed it at half the PNG's width (at most 656 pixels) so its text
+matches the page:
 
 ```bash
-npm install --global @mermaid-js/mermaid-cli@11.17.0
+npm ci --prefix scripts
 node scripts/render-diagrams.mjs
 node scripts/render-diagrams.mjs --check
 ```
 
-Commit a changed Mermaid source and its re-rendered PNG together; CI
-(`.github/workflows/docs.yml`) fails if they drift.
+## Examples, benchmark, and Agent Skill
 
-## Offline parser benchmark
+- Examples in
+  [`examples/`](https://github.com/smuniharish/xstructured/tree/master/examples) must run
+  offline through the scripted model in `examples/_shared.py`; add new ones to
+  `tests/test_examples.py` with their expected output.
+- Add parser edge cases to `benchmarks/cases.json` with an explicit expected value, or
+  `null` when the input must be rejected, then run `uv run python -m benchmarks`.
+- Keep the Agent Skill in
+  [`skills/xstructured/`](https://github.com/smuniharish/xstructured/tree/master/skills/xstructured)
+  accurate when public behavior changes, and validate it with
+  `uvx --from skills-ref agentskills validate skills/xstructured`.
 
-Run the checked-in correctness and timing experiment without credentials or
-network access:
+## Pull requests
 
-```bash
-uv run python -m benchmarks --help
-uv run python -m benchmarks --iterations 100
-```
-
-The methodology and publication requirements are in
-[`docs/benchmarks.md`](docs/benchmarks.md). Update
-[`benchmarks/cases.json`](benchmarks/cases.json) when adding a new parser edge
-case, and keep its expected acceptance outcome explicit.
-
-## Examples
-
-Scripts under [`examples/`](examples) must stay importable and smoke-testable
-without any API key or optional package installed --
-[`tests/test_examples_smoke.py`](tests/test_examples_smoke.py) enforces this
-in CI. If you add an example, gate it with `require_env` / `require_package`
-from [`examples/_shared.py`](examples/_shared.py) and add it to
-[`examples/README.md`](examples/README.md) and
-[`docs/examples/index.md`](docs/examples/index.md).
-
-## Pull request expectations
-
-- Explain the user-visible and architectural impact.
-- Add or update tests for behavior changes.
-- Update relevant user-facing pages under [`docs/`](docs).
-- Ensure format, lint, types, tests, diagram rendering, and the strict docs
-  build all pass.
+- Explain the user-visible effect of the change.
+- Add tests for new behavior and update the documentation and the changelog.
+- Make sure every check above passes.

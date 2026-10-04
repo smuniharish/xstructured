@@ -1,40 +1,40 @@
 # Troubleshooting
 
-Use the repository examples and issue-driven checks before changing parsing or
-schema behavior:
+All errors derive from `XStructuredError`; output problems derive from `ParseError`, which
+keeps the model output in `error.text` (never in the message).
 
-- [LangChain integration](https://xstructured.readthedocs.io/en/latest/integrations/langchain/)
-- [Why xstructured?](https://xstructured.readthedocs.io/en/latest/integrations/why-xstructured/)
-- [Examples](https://github.com/smuniharish/xstructured/tree/master/examples)
-- [Tests](https://github.com/smuniharish/xstructured/tree/master/tests)
+| Error or symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `TypeError: Cannot add xstructured instructions to input of type dict` | A prompt-template chain or agent state was passed with injection on. | Pass `inject_instructions=False` and put the instructions in the prompt, or adapt the input to messages. |
+| `TypeError: The wrapped Runnable must return str or BaseMessage values` | The wrapped Runnable returns a dict, such as agent state. | Adapt it with a `RunnableLambda` that returns `state["messages"][-1]`. |
+| `ParseError: No complete <xstructured>...</xstructured> envelope was found` | The model ignored the instructions or did not receive them. | Check the instructions reach the model (`wrapper.instructions`), strengthen the prompt, or add bounded repair. |
+| `RecoveryError` | JSON invalid or not matching the schema. `error.failures` lists each candidate. | Read the schema failure, clarify field descriptions, or constrain the prompt; consider repair. |
+| `LimitExceededError` (`error.limit`, `error.maximum`) | The response exceeded a configured limit. | Investigate the response; raise the limit only if legitimate responses are larger. |
+| `RepairError` (`error.attempts`, `error.failures`) | Repair attempts all failed. | Inspect `error.__cause__`, improve instructions, or fall back to another model. |
+| `ValueError: Named envelopes cannot be streamed` | `stream()` with `multiple_envelopes=True`. | Use `invoke`, or stream inside a composed chain. |
+| `SchemaError` at construction | The schema is not a Pydantic-compatible target, or a named schema name is invalid. | Use a model class, `TypeAdapter`, or annotation; names are 1-64 of `A-Za-z0-9_.-`. |
+| `EnvelopeError` at construction | Delimiters contain `"` or `\`, are equal, or are not tag-style for named envelopes. | Use delimiters such as `<result>` / `</result>`. |
+| Empty `result.content` | The model replied with only the envelope. | Ask for a short explanation in the prompt if prose is needed. |
+| `result.recovered` is `True` | JSON came from a fence or surrounding prose. | Usually fine; to require exact JSON, disable recovery. |
 
-## Common problems
+## Handling pattern
 
-### The model output is surrounded by prose or markdown fences
+```python
+from xstructured import LimitExceededError, ParseError, StructuredParser
 
-This is expected in imperfect providers. Use the built-in recovery and parsing
-logic rather than slicing the response by hand. Prefer `StructuredParser` or
-`with_xstructured_output` to handle fences and surrounding prose conservatively.
 
-### The application is losing the natural-language answer
+def safe_parse(parser: StructuredParser[dict], text: str) -> dict | None:
+    try:
+        return parser.parse(text).value
+    except LimitExceededError:
+        return None  # Too large: do not retry or send elsewhere.
+    except ParseError as error:
+        # Never log error.text if it may hold PII.
+        print(f"invalid model output: {error}")
+        return None
+```
 
-The availability of both `text` and `structured` is part of the API. Keep the
-`XStructuredResult` and avoid discarding the original model response unless the
-workflow explicitly only needs the structured object.
+## Retrying the model
 
-### The response is malformed or partially missing
-
-Validate the actual raw model output and retry with explicit repair rules only
-when the application genuinely allows repair. Do not silently change schema or
-bypass validation.
-
-### The agent graph returns state dicts rather than plain message data
-
-Wrap the final message at the boundary, not the entire graph state. This is the
-pattern shown in the repository's `create_agent` examples.
-
-### The parsing is too permissive or too strict
-
-Tighten or relax `ParserConfig` and the recovery policy deliberately, then test
-against realistic model output and schema failures. Keep the security and
-correctness tradeoff visible in the application.
+`wrapper.with_retry(retry_if_exception_type=(RecoveryError,), stop_after_attempt=2)`
+resamples the model; `wrapper.with_fallbacks([other_wrapper])` tries another model.

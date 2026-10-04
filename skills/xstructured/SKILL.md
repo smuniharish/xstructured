@@ -1,146 +1,132 @@
 ---
 name: xstructured
-description: Wrap a LangChain Runnable or agent with schema-guided extraction, validation, conservative recovery, and ordered streaming. Use when an application needs a validated Pydantic object plus readable prose from an existing Runnable without rewriting the underlying model, chain, or graph.
+description: Adds schema-validated Pydantic v2 output to LangChain v1 chat models, chains, Runnables, and agents with the xstructured Python package, returning natural-language text and validated data from one LLM response. Use when code uses or should use with_xstructured_output, StructuredParser, StreamDecoder, or <xstructured>...</xstructured> envelopes; when parsing JSON out of model text, streaming text plus structured data to a UI, validating create_agent, Deep Agents, or LangGraph output, returning multiple or named payloads, or adding bounded LLM repair.
+license: Apache-2.0
+compatibility: Python 3.12+ with the xstructured package (depends on langchain-core and pydantic v2). Live model calls need a configured LangChain chat model.
+metadata:
+  author: S MUNI HARISH
+  version: "0.1.0"
+  repository: https://github.com/smuniharish/xstructured
+  documentation: https://xstructured.readthedocs.io
 ---
 
 # xstructured
 
-Use this skill for the existing `xstructured` Python package, not to create a
-new structured-output framework, schema engine, or LangChain connector.
+`xstructured` wraps a LangChain Runnable so one model response yields both prose and a
+Pydantic-validated value. The model writes its answer and places JSON inside an envelope
+(`<xstructured>...</xstructured>`); the wrapper adds instructions, extracts the envelope,
+recovers conservatively from Markdown or prose, validates with Pydantic in JSON mode, and
+returns an `XStructuredResult`.
 
-Authoritative documentation: https://xstructured.readthedocs.io/
-Repository: https://github.com/smuniharish/xstructured
+## Decide whether it fits
 
-The supported public import namespace is:
+Use xstructured when the application needs:
+
+- natural-language text **and** typed data from the same response;
+- a typed result from an existing chain, custom Runnable, or agent graph without
+  rebuilding it;
+- streaming of text deltas plus a validated value to a UI;
+- one response contract across providers, including models without native structured
+  output;
+- explicit limits and typed errors for untrusted model output.
+
+Prefer LangChain's native features when only the structured value is needed:
+`model.with_structured_output(Schema)` for chat models, or
+`create_agent(..., response_format=Schema)` for agents.
+
+## Workflow
+
+1. Confirm the environment: Python 3.12+, `langchain-core` 1.x, Pydantic v2, and
+   `xstructured` installed (`pip install xstructured` or `uv add xstructured`).
+2. Define the schema as a Pydantic model. Constrain it (`Literal`, `Field(ge=..., max_length=...)`,
+   `extra="forbid"`) so validation, not application code, rejects bad output.
+3. Pick the integration pattern from [references/integration.md](references/integration.md):
+   chat model, chain with a prompt template, agent adapter, or LangGraph node.
+4. Wrap with `with_xstructured_output(runnable, Schema, ...)`. Choose `multiple=True`,
+   named schemas, or `multiple_envelopes=True` only when one response must carry several
+   values.
+5. Consume `result.structured` in code and `result.content` for people. For UIs, use
+   `stream()` events; see [references/streaming.md](references/streaming.md).
+6. Handle `ParseError` subclasses deliberately; see
+   [references/troubleshooting.md](references/troubleshooting.md).
+7. Test offline with a fake model (below) before calling a live provider.
+
+## Core patterns
+
+Wrap a chat model or any Runnable that returns text or messages:
 
 ```python
-from xstructured import (
-    ParserConfig,
-    StructuredParser,
-    XStructuredResult,
-    fingerprint_schema,
-    schema_instructions,
-    with_xstructured_output,
-)
+from langchain.chat_models import init_chat_model
+from pydantic import BaseModel
+
+from xstructured import with_xstructured_output
+
+
+class Contact(BaseModel):
+    name: str
+    email: str
+
+
+model = init_chat_model("openai:gpt-5-mini")
+extractor = with_xstructured_output(model, Contact)
+result = extractor.invoke("Reach Priya Shah at priya.shah@example.com.")
+contact = result.structured  # Contact instance
+reply = result.content  # prose with the envelope removed
 ```
 
-`with_xstructured_output` wraps a LangChain `Runnable` or agent boundary and
-returns an `XStructuredResult` containing the original model text plus a
-validated Pydantic object. It is intended for cases where the app needs a
-typed result and readable prose together, while leaving the underlying model
-or agent orchestration otherwise unchanged.
+Parse text that already exists, without LangChain:
 
-Read [`references/architecture.md`](references/architecture.md) before reasoning
-about the runtime boundaries. Read
-[`references/integration.md`](references/integration.md) before adding it to an
-application.
+```python
+from xstructured import StructuredParser
 
-## Activate when
+parser = StructuredParser(Contact)
+parsed = parser.parse('Sure! {"name": "Priya", "email": "p@example.com"}')
+assert parsed.recovered  # JSON was found inside surrounding prose
+```
 
-Use `xstructured` when an existing LangChain `Runnable`, agent, or graph emits
-natural-language content that needs a typed payload without rearchitecting the
-workflow. Typical indicators:
+Test offline with LangChain's fake chat model:
 
-- a model, chain, or agent returns free-form text but the application needs a
-  structured object;
-- you already have a working `Runnable`, but it is not a native provider-native
-  structured-output path;
-- a response may be wrapped in markdown fences, commentary, or surrounding
-  prose before valid JSON appears;
-- the UI needs to stream text and structured completion events in order;
-- the application needs explicit limits for untrusted model output before
-  accepting it;
-- a malformed response can be repaired in a bounded, observable way;
-- you need a stable response contract across mixed model providers or custom
-  Runnable boundaries.
+```python
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
 
-Do not select it merely because you need a general parser library, a new
-schema framework, or a replacement for LangChain/LangGraph built-in
-`output_schema` when the native feature already matches the application
-contract.
+reply_text = (
+    'Done. <xstructured>{"name": "Priya", "email": "p@example.com"}'
+    "</xstructured>"
+)
+fake = GenericFakeChatModel(messages=iter([AIMessage(content=reply_text)]))
+result = with_xstructured_output(fake, Contact).invoke("q")
+assert result.structured.name == "Priya"
+```
 
-## Required workflow
+## Rules
 
-### Before changing an application
+- Wrap the **whole** chain or agent boundary, so the instructions reach the model and the
+  final output is validated.
+- Inputs must be a string, `PromptValue`, or message list. For dict inputs (prompt
+  templates, agent state), pass `inject_instructions=False` and put
+  `schema_instructions(Schema, envelope=EnvelopeSpec())` or `wrapper.instructions` in the
+  prompt; otherwise the wrapper raises `TypeError` before calling the model.
+- Adapt `create_agent` and `create_deep_agent` graphs with a `RunnableLambda` that passes
+  messages in and returns `state["messages"][-1]`.
+- Never parse model JSON by slicing strings or with ad hoc regexes; use `StructuredParser`
+  or the wrapper.
+- Keep validation strict. Do not catch and ignore `ParseError`, loosen schemas to make
+  bad output pass, or raise limits without a measured need.
+- Use `repair=` only as an explicit, bounded fallback (`RepairConfig(max_attempts=...)`),
+  never as a substitute for clear instructions.
+- Treat validated values as untrusted: apply authorization and business rules before side
+  effects.
+- Do not edit xstructured's source to work around behavior; configure it through its
+  public API ([references/api.md](references/api.md)).
 
-1. Inspect the installed or current `xstructured` version and the existing
-   `with_xstructured_output` construction in the codebase. In this repository,
-   the supported public API is exported from
-   [`src/xstructured/__init__.py`](../../src/xstructured/__init__.py).
-2. Verify the project is using LangChain v1 semantics and the runtime shape that
-   the wrapper expects: a `Runnable`, chat model, or adapter around a
-   `create_agent` graph.
-3. Search for existing response contracts, JSON parsing, Pydantic validation,
-   or custom extraction wrappers so the changes preserve the existing boundary.
-4. Start from a matching example or pattern in the repository docs before
-   inventing new plumbing.
-5. Use the supported constructor and documented parameters only; do not assume
-   a second internal API or undocumented config exists.
+## References
 
-### Choose the right response to structured-output pressure
-
-1. **Existing Runnable, no schema hook:** wrap the runnable at the execution
-   boundary using `with_xstructured_output(runnable, Schema)`.
-2. **Agent or graph with message-state output:** adapt the final message with a
-   small `RunnableLambda` before wrapping.
-3. **Text plus validated object needed:** keep the natural-language text and
-   typed result together via `XStructuredResult` rather than throwing away prose.
-4. **Markdown fences or surrounding commentary:** rely on the library's
-   conservative recovery before validation instead of ad hoc string slicing.
-5. **Streaming UI or incremental rendering:** use the ordered streaming
-   protocol rather than manually reconstructing structured events.
-6. **Safety requirements:** configure `ParserConfig` with appropriate input,
-   envelope, payload, and nesting limits before accepting model content.
-7. **Repairable malformed JSON:** use an explicit repair Runnable with a guard
-   on retry count rather than unbounded or hidden retries.
-
-## Integration rules
-
-- Wrap a custom `Runnable` or agent boundary; do not rewrite the underlying
-  orchestration simply to add a schema layer.
-- Use LangChain's native `output_schema` or provider-native structured output
-  when it already matches the precise application contract. `xstructured` is an
-  adapter for existing workflows, not a replacement for the native pathway.
-- Keep the original model response available for auditing; preserve the text,
-  raw output, and typed object together.
-- Respect the `Runnable` contract: `.invoke`, `.ainvoke`, `.batch`, `.abatch`,
-  `.stream`, and `.astream` are the supported surface.
-- Use schema instructions only when the input shape allows them; do not assume
-  dict-shaped agent state should be mutated or inspected.
-- Prefer explicit configuration over broad permissive parsing where `ParserConfig`
-  or `RecoveryConfig` is needed.
-- Use `StructuredParser` and `schema_instructions` only for the verified public
-  API and documented behavior.
-
-## Prohibited shortcuts
-
-Do not:
-
-- rewrite a working agent or chain just to replace a native `output_schema` when
-  the built-in contract already matches the need;
-- add ad hoc JSON extraction by manually slicing the response before checking
-  whether the built-in recovery or envelope handling applies;
-- assume a dict-shaped agent result is a valid input to a plain message-based
-  wrapper without adapting it first;
-- invent undocumented constructor arguments, environment variables, or hidden
-  runtime behavior;
-- silently increase parser limits or disable validation without documenting the
-  security and correctness tradeoff;
-- discard text, raw output, or structured metadata when a typed object is the
-  only thing needed;
-- implement a second schema or parsing framework as a workaround for this
-  package;
-- change `src/xstructured/` while the task is limited to integration guidance or
-  skill content.
-
-## Verification checklist
-
-For an application change, add or update a focused test covering the exact
-response shape: a plain Runnable, create_agent adaptation, malformed output,
-recovery, bounded repair, or streaming. Then run the repository's format,
-lint, type, and test commands documented in the project README.
-
-For changes to the skill itself, follow
-[`../../validation/README.md`](../../validation/README.md). Review the
-authoritative docs and examples in the repository rather than expanding this
-file into a second manual.
+- [references/api.md](references/api.md): public API, result fields, and metadata.
+- [references/integration.md](references/integration.md): chat models, chains, agents,
+  Deep Agents, LangGraph, and composition.
+- [references/streaming.md](references/streaming.md): stream events, decoding, and limits.
+- [references/configuration.md](references/configuration.md): limits, recovery, multiple
+  payloads, and repair.
+- [references/troubleshooting.md](references/troubleshooting.md): errors, causes, and
+  fixes.

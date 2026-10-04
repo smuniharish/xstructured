@@ -1,66 +1,78 @@
-"""Shared helpers for the runnable example scripts in this directory."""
+"""Helpers shared by the example scripts.
+
+Every example runs in one of two modes:
+
+- **Live**, when ``EXPLABS_API_KEY`` is set: requests go to the Experiential
+  Labs OpenAI-compatible API. ``EXPLABS_MODEL`` and ``EXPLABS_BASE_URL``
+  override the model and endpoint.
+- **Offline**, otherwise: a scripted chat model replays realistic responses,
+  so every example runs anywhere without credentials or network access.
+"""
 
 from __future__ import annotations
 
+import importlib.util
 import os
+from collections.abc import Sequence
+from typing import Any, override
+
+from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
+
+DEFAULT_MODEL = "gpt-5.6-luna"
+DEFAULT_BASE_URL = "https://api.experientiallabs.ai/v1"
 
 
-def require_env(*names: str, install_hint: str | None = None) -> None:
-    """Exit cleanly with guidance when required environment variables are missing.
+class ScriptedChatModel(GenericFakeChatModel):
+    """Offline chat model that replays scripted responses and accepts tools."""
 
-    This keeps example scripts runnable in CI and other credential-free
-    environments: missing configuration is treated as "skip", not "fail".
-    """
-    missing = [name for name in names if not os.environ.get(name)]
-    if not missing:
-        return
-    print(
-        "Skipping example: missing required environment variable(s) "
-        f"{', '.join(missing)}.\n"
-        "Set them to your provider credentials to run this example live, e.g.\n"
-        f'  $env:{missing[0]} = "..."   # PowerShell\n'
-        f"  export {missing[0]}=...       # bash/zsh"
-    )
-    if install_hint:
-        print(install_hint)
-    raise SystemExit(0)
+    @override
+    def bind_tools(
+        self, tools: Sequence[Any], **kwargs: Any
+    ) -> ScriptedChatModel:
+        """Accept tool definitions; scripted responses never call tools."""
+        return self
 
 
-def require_package(module_name: str, *, extra_group: str) -> None:
-    """Exit cleanly with guidance when an optional example dependency is absent."""
-    import importlib.util
-
-    if importlib.util.find_spec(module_name) is not None:
-        return
-    print(
-        f"Skipping example: the '{module_name}' package is not installed.\n"
-        f"Install it with:\n"
-        f"  uv sync --group {extra_group}"
-    )
-    raise SystemExit(0)
+def is_live() -> bool:
+    """Whether the examples call the live Experiential Labs API."""
+    return bool(os.environ.get("EXPLABS_API_KEY"))
 
 
-def explabs_chat_model():
-    """Create the OpenAI-compatible model used by live examples.
+def chat_model(*scripted: str) -> BaseChatModel:
+    """Return the live chat model, or an offline one replaying *scripted*."""
+    if is_live():
+        from langchain_openai import ChatOpenAI
 
-    Provider configuration intentionally lives in examples, not in the
-    xstructured runtime package.
-    """
-    from langchain_openai import ChatOpenAI
-
-    return ChatOpenAI(
-        model=os.environ.get("EXPLABS_MODEL", "gpt-5.6-luna"),
-        api_key=os.environ["EXPLABS_API_KEY"],
-        base_url=os.environ.get(
-            "EXPLABS_BASE_URL",
-            "https://api.experientiallabs.ai/v1",
-        ),
+        return ChatOpenAI(
+            model=os.environ.get("EXPLABS_MODEL", DEFAULT_MODEL),
+            base_url=os.environ.get("EXPLABS_BASE_URL", DEFAULT_BASE_URL),
+            api_key=os.environ["EXPLABS_API_KEY"],
+        )
+    return ScriptedChatModel(
+        messages=iter([AIMessage(content=text) for text in scripted])
     )
 
 
-def print_result_header(title: str) -> None:
-    print(f"\n=== {title} ===")
+def require_packages(*modules: str) -> None:
+    """Exit with setup guidance when an optional dependency is missing."""
+    missing = [
+        module for module in modules if importlib.util.find_spec(module) is None
+    ]
+    if missing:
+        print(
+            f"This example needs {', '.join(missing)}. Install the example "
+            "dependencies with:\n  uv sync --group examples"
+        )
+        raise SystemExit(0)
 
 
-def print_structured(label: str, value: object) -> None:
-    print(f"{label}: {value!r}")
+def banner(title: str) -> None:
+    """Print the example title and the mode it runs in."""
+    mode = (
+        f"live: {os.environ.get('EXPLABS_MODEL', DEFAULT_MODEL)}"
+        if is_live()
+        else "offline: scripted model"
+    )
+    print(f"=== {title} ({mode}) ===")

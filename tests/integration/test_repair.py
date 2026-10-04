@@ -1,151 +1,164 @@
-"""Optional, bounded LLM-assisted repair for the LangChain integration.
-
-No network calls: the "repair model" here is a plain RunnableLambda, just
-like the wrapped model in the other integration tests.
-"""
+"""Opt-in, bounded LLM-assisted repair. The "repair model" is a plain RunnableLambda."""
 
 from __future__ import annotations
 
 import pytest
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
-from pydantic import BaseModel
 
-from xstructured import RepairConfig, with_xstructured_output
-from xstructured.core import RecoveryError, RepairError
+from tests.support import Answer, Recorder, reply
+from xstructured import (
+    LimitExceededError,
+    ParseError,
+    ParserConfig,
+    RecoveryError,
+    RepairConfig,
+    RepairError,
+    with_xstructured_output,
+)
+
+MALFORMED = "Sure. <xstructured>{value: 42}</xstructured> Thanks!"
+FIXED = '<xstructured>{"value": 42}</xstructured>'
 
 
-class Answer(BaseModel):
-    value: int
-
-
-def _malformed_response(_: object) -> str:
-    # An unquoted object key: invalid JSON that conservative recovery cannot fix.
-    return "Sure. <xstructured>{value: 42}</xstructured>"
-
-
-def test_repair_is_not_invoked_when_not_configured() -> None:
-    runnable = with_xstructured_output(RunnableLambda(_malformed_response), Answer)
-
+def test_repair_is_never_called_unless_configured() -> None:
     with pytest.raises(RecoveryError):
-        runnable.invoke("q")
+        with_xstructured_output(reply(MALFORMED), Answer).invoke("q")
 
 
 def test_repair_fixes_a_response_recovery_could_not() -> None:
-    calls: list[str] = []
-
-    def fix(prompt: str) -> str:
-        calls.append(prompt)
-        return '<xstructured>{"value": 42}</xstructured>'
-
-    runnable = with_xstructured_output(
-        RunnableLambda(_malformed_response),
-        Answer,
-        repair=RunnableLambda(fix),
+    repair = Recorder(FIXED)
+    wrapper = with_xstructured_output(
+        reply(MALFORMED), Answer, repair=RunnableLambda(repair)
     )
 
-    result = runnable.invoke("q")
+    result = wrapper.invoke("q")
 
     assert result.structured == Answer(value=42)
-    assert result.repaired is True
-    assert result.repair_attempt_count == 1
-    assert result.metadata["repair_attempted"] is True
-    assert result.metadata["repair_attempt_count"] == 1
-    assert len(calls) == 1
-    assert "Repair attempt 1 of 1" in calls[0]
-    assert "Invalid response:" in calls[0]
+    assert result.repaired
+    assert result.repair_attempts == 1
+    assert result.content == "Sure.  Thanks!"
+    assert result.raw_text == MALFORMED
+    [prompt] = repair.inputs
+    assert "Problems (attempt 1 of 1):" in prompt
+    assert "- Expecting property name enclosed in double quotes" in prompt
+    assert wrapper.instructions in prompt
+    assert prompt.endswith(f"Response to correct:\n{MALFORMED}")
 
 
-def test_repair_accepts_message_output_from_the_repair_runnable() -> None:
-    def fix(_: str) -> AIMessage:
-        return AIMessage(content='<xstructured>{"value": 7}</xstructured>')
-
-    runnable = with_xstructured_output(
-        RunnableLambda(_malformed_response),
-        Answer,
-        repair=RunnableLambda(fix),
+def test_repair_accepts_message_output() -> None:
+    wrapper = with_xstructured_output(
+        reply(MALFORMED), Answer, repair=reply(AIMessage(content=FIXED))
     )
 
-    result = runnable.invoke("q")
-
-    assert result.structured == Answer(value=7)
-    assert result.repaired is True
+    assert wrapper.invoke("q").structured == Answer(value=42)
 
 
-@pytest.mark.asyncio
-async def test_arepair_is_used_for_ainvoke() -> None:
-    calls: list[str] = []
-
-    async def fix(prompt: str) -> str:
-        calls.append(prompt)
-        return '<xstructured>{"value": 9}</xstructured>'
-
-    runnable = with_xstructured_output(
-        RunnableLambda(_malformed_response),
-        Answer,
-        repair=RunnableLambda(fix),
+def test_repair_retries_with_the_latest_failure_then_gives_up() -> None:
+    repair = Recorder(
+        "<xstructured>{value: 1}</xstructured>", "still no envelope"
     )
-
-    result = await runnable.ainvoke("q")
-
-    assert result.structured == Answer(value=9)
-    assert result.repaired is True
-    assert len(calls) == 1
-
-
-def test_repair_retries_up_to_the_configured_bound_then_raises() -> None:
-    attempts: list[str] = []
-
-    def still_bad(prompt: str) -> str:
-        attempts.append(prompt)
-        return "<xstructured>{value: still bad}</xstructured>"
-
-    runnable = with_xstructured_output(
-        RunnableLambda(_malformed_response),
+    wrapper = with_xstructured_output(
+        reply(MALFORMED),
         Answer,
-        repair=RunnableLambda(still_bad),
+        repair=RunnableLambda(repair),
         repair_config=RepairConfig(max_attempts=3),
     )
 
     with pytest.raises(RepairError) as excinfo:
-        runnable.invoke("q")
+        wrapper.invoke("q")
 
-    assert len(attempts) == 3
-    assert "Repair attempt 1 of 3" in attempts[0]
-    assert "Repair attempt 3 of 3" in attempts[2]
-    assert excinfo.value.attempt_count == 3
-    assert excinfo.value.repair_errors
+    error = excinfo.value
+    assert len(repair.inputs) == 3
+    assert "Problems (attempt 3 of 3):" in repair.inputs[2]
+    assert repair.inputs[2].endswith("Response to correct:\nstill no envelope")
+    assert error.attempts == 3
+    assert len(error.failures) == 3
+    assert "No complete <xstructured>" in error.failures[-1]
+    assert error.text == MALFORMED
+    assert isinstance(error.__cause__, ParseError)
+    assert "3 attempt(s)" in str(error)
 
 
-def test_repair_config_can_disable_repair_without_removing_the_runnable() -> None:
-    def fix(_: str) -> str:
-        raise AssertionError("repair Runnable must not be invoked when disabled")
+def test_repair_can_be_disabled_by_configuration() -> None:
+    def must_not_run(_: object) -> str:
+        raise AssertionError("repair must not run")
 
-    runnable = with_xstructured_output(
-        RunnableLambda(_malformed_response),
+    wrapper = with_xstructured_output(
+        reply(MALFORMED),
         Answer,
-        repair=RunnableLambda(fix),
+        repair=RunnableLambda(must_not_run),
         repair_config=RepairConfig(enabled=False),
     )
 
     with pytest.raises(RecoveryError):
-        runnable.invoke("q")
+        wrapper.invoke("q")
 
 
-def test_successful_first_parse_never_touches_the_repair_runnable() -> None:
-    def fix(_: str) -> str:
-        raise AssertionError("repair Runnable must not be invoked on a valid response")
+def test_limit_violations_are_never_repaired() -> None:
+    def must_not_run(_: object) -> str:
+        raise AssertionError("repair must not run")
 
-    def good_response(_: object) -> str:
-        return '<xstructured>{"value": 1}</xstructured>'
-
-    runnable = with_xstructured_output(
-        RunnableLambda(good_response),
+    wrapper = with_xstructured_output(
+        reply("x" * 50),
         Answer,
-        repair=RunnableLambda(fix),
+        parser_config=ParserConfig(max_input_chars=10),
+        repair=RunnableLambda(must_not_run),
     )
 
-    result = runnable.invoke("q")
+    with pytest.raises(LimitExceededError):
+        wrapper.invoke("q")
 
-    assert result.structured == Answer(value=1)
-    assert result.repaired is False
+
+def test_valid_responses_never_touch_the_repair_runnable() -> None:
+    repair = Recorder(FIXED)
+    wrapper = with_xstructured_output(
+        reply(FIXED), Answer, repair=RunnableLambda(repair)
+    )
+
+    assert not wrapper.invoke("q").repaired
+    assert repair.inputs == []
+
+
+async def test_async_repair() -> None:
+    repair = Recorder(FIXED)
+    wrapper = with_xstructured_output(
+        reply(MALFORMED),
+        Answer,
+        repair=RunnableLambda(repair.__call__, afunc=repair.acall),
+    )
+
+    result = await wrapper.ainvoke("q")
+
+    assert result.structured == Answer(value=42)
+    assert result.repaired
+
+
+async def test_async_repair_gives_up_after_the_budget() -> None:
+    repair = Recorder("nope")
+    wrapper = with_xstructured_output(
+        reply(MALFORMED),
+        Answer,
+        repair=RunnableLambda(repair.__call__, afunc=repair.acall),
+    )
+
+    with pytest.raises(RepairError):
+        await wrapper.ainvoke("q")
+
+
+def test_repair_also_applies_inside_composed_streams() -> None:
+    wrapper = with_xstructured_output(
+        reply(MALFORMED), Answer, repair=reply(FIXED)
+    )
+    chain = wrapper | RunnableLambda(lambda result: result.repaired)
+
+    assert list(chain.stream("q")) == [True]
+
+
+async def test_repair_also_applies_inside_composed_async_streams() -> None:
+    wrapper = with_xstructured_output(
+        reply(MALFORMED), Answer, repair=reply(FIXED)
+    )
+    chain = wrapper | RunnableLambda(lambda result: result.repaired)
+
+    assert [item async for item in chain.astream("q")] == [True]

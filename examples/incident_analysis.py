@@ -1,22 +1,38 @@
-"""Incident analysis that turns an operator report into an action plan."""
+"""Turn an operator's incident report into a structured action plan.
+
+Run it with ``uv run python examples/incident_analysis.py``.
+"""
 
 from __future__ import annotations
 
-from _shared import explabs_chat_model, print_result_header, require_env, require_package
+from typing import Literal
 
-require_package("langchain", extra_group="examples")
-require_env("EXPLABS_API_KEY")
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field
 
-from langchain_core.messages import HumanMessage  # noqa: E402
-from pydantic import BaseModel, Field  # noqa: E402
+from _shared import banner, chat_model
+from xstructured import with_xstructured_output
 
-from xstructured import with_xstructured_output  # noqa: E402
+SCRIPTED_REPLY = (
+    "The rollback points to the release as the trigger; the root cause "
+    "still needs review.\n"
+    "<xstructured>"
+    '{"severity": "high", '
+    '"summary": "Checkout errors rose to 35% after release '
+    '2026.09.18; rolling back reduced them to 1% within five minutes.", '
+    '"probable_cause": "A regression introduced by release 2026.09.18.", '
+    '"immediate_actions": ["Keep the rollback in place", '
+    '"Watch checkout error rates"], '
+    '"follow_up_actions": ["Bisect the release for the failing change", '
+    '"Add a checkout canary before the next deploy"]}'
+    "</xstructured>"
+)
 
 
 class IncidentAnalysis(BaseModel):
-    """Structured fields useful for an incident ticket and handoff."""
+    """Fields for an incident ticket and hand-off."""
 
-    severity: str
+    severity: Literal["low", "medium", "high", "critical"]
     summary: str
     probable_cause: str
     immediate_actions: list[str] = Field(min_length=1)
@@ -26,17 +42,21 @@ class IncidentAnalysis(BaseModel):
 def main() -> None:
     report = (
         "At 09:12 UTC checkout errors rose to 35% after release 2026.09.18. "
-        "Rolling back reduced errors to 1% within five minutes."
+        "Rolling back reduced errors to 1% within five minutes. "
+        "Explain your assessment in one sentence before the structured block."
     )
-    result = with_xstructured_output(explabs_chat_model(), IncidentAnalysis).invoke(
-        [HumanMessage(content=report)]
-    )
-    print_result_header("Incident analysis")
-    print(f"Severity: {result.structured.severity}")
-    print(f"Summary: {result.structured.summary}")
-    print(f"Probable cause: {result.structured.probable_cause}")
-    print(f"Immediate actions: {result.structured.immediate_actions}")
-    print(f"Follow-up actions: {result.structured.follow_up_actions}")
+    result = with_xstructured_output(
+        chat_model(SCRIPTED_REPLY), IncidentAnalysis
+    ).invoke([HumanMessage(report)])
+
+    banner("Incident analysis")
+    analysis = result.structured
+    print(f"Severity:       {analysis.severity}")
+    print(f"Summary:        {analysis.summary}")
+    print(f"Probable cause: {analysis.probable_cause}")
+    print(f"Immediate:      {analysis.immediate_actions}")
+    print(f"Follow-up:      {analysis.follow_up_actions}")
+    print(f"Explanation:    {result.content.strip()}")
 
 
 if __name__ == "__main__":

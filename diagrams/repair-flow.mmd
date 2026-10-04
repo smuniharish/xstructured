@@ -1,0 +1,19 @@
+flowchart TB
+    failed(["The response did not validate"]) --> limit{{"Resource limit exceeded?"}}
+    limit -->|yes| raise_limit["LimitExceededError"]
+    limit -->|no| configured{{"Repair enabled?"}}
+    configured -->|no| raise_parse["The original ParseError"]
+    configured -->|yes| ask["`**Ask the repair Runnable**
+    instructions, problems,
+    and the invalid response`"]
+    ask --> reparse{{"Valid now?"}}
+    reparse -->|yes| repaired(["`**XStructuredResult**
+    repaired = True`"])
+    reparse -->|no| budget{{"Attempts left?"}}
+    budget -->|yes| ask
+    budget -->|no| raise_repair["RepairError"]
+
+    classDef error fill:#FEF2F2,stroke:#DC2626,color:#7F1D1D
+    classDef success fill:#ECFDF5,stroke:#059669,color:#064E3B
+    class raise_limit,raise_parse,raise_repair error
+    class repaired success

@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant App as Caller
+    participant X as XStructuredRunnable
+    participant R as Wrapped Runnable
+    participant F as Repair Runnable
+
+    App->>X: invoke(input)
+    X->>X: add instructions
+    X->>R: invoke(prepared input)
+    R-->>X: message or text
+    X->>X: extract and validate
+    opt invalid, and repair is configured
+        loop at most max_attempts
+            X->>F: response + problems
+            F-->>X: corrected response
+            X->>X: validate again
+        end
+    end
+    X-->>App: XStructuredResult
+    Note over App,F: One traced run, with the wrapped and repair<br/>Runnables as its child runs.

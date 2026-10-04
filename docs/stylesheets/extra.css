@@ -1,0 +1,91 @@
+/* Hero block on the home page. */
+.md-typeset .xs-hero {
+  margin: 0 0 2rem;
+  padding: 2.2rem 2rem 1.6rem;
+  border-radius: 0.8rem;
+  background: linear-gradient(135deg, rgb(79 70 229 / 12%), rgb(16 185 129 / 10%));
+}
+
+.md-typeset .xs-hero h1 {
+  margin: 0 0 0.6rem;
+  color: var(--md-default-fg-color);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.md-typeset .xs-hero .xs-tagline {
+  margin: 0 0 1.2rem;
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+.md-typeset .xs-hero .md-button {
+  margin: 0.3rem 0.4rem 0.3rem 0;
+}
+
+/* Outline buttons need a lighter indigo to stay legible on the dark hero. */
+[data-md-color-scheme="slate"] .md-typeset .xs-hero .md-button:not(.md-button--primary) {
+  border-color: #a5b4fc;
+  color: #c7d2fe;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .xs-hero .md-button:not(.md-button--primary):is(:hover, :focus) {
+  border-color: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color);
+}
+
+@media screen and (max-width: 44.984375em) {
+  .md-typeset .xs-hero {
+    padding: 1.4rem 1.2rem 1rem;
+  }
+
+  .md-typeset .xs-hero .md-button {
+    display: block;
+    margin: 0.5rem 0;
+    text-align: center;
+  }
+}
+
+/* Diagrams are rendered at twice their display size, on white so they stay
+   readable in dark mode. The width attribute sets the image's display size. */
+.md-typeset img.diagram {
+  display: block;
+  box-sizing: content-box;
+  max-width: calc(100% - 1.5rem);
+  height: auto;
+  margin: 1.5rem auto;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 12%);
+}
+
+[data-md-color-scheme="slate"] .md-typeset img.diagram {
+  box-shadow: none;
+}
+
+/* Program output wraps instead of scrolling. */
+.md-typeset .language-text pre > code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Cards and tables. */
+.md-typeset .grid.cards > ul > li {
+  border-radius: 0.6rem;
+}
+
+.md-typeset table:not([class]) th {
+  white-space: nowrap;
+}
+
+/* Identifiers in tables are never broken mid-word. */
+.md-typeset table:not([class]) code {
+  white-space: nowrap;
+  word-break: normal;
+}
+
+/* API reference: give each documented object some breathing room. */
+.md-typeset .doc-object {
+  margin-bottom: 1.5rem;
+}

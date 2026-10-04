@@ -1,83 +1,106 @@
-# LangChain
+# LangChain Runnables
 
-`xstructured.langchain` provides `with_xstructured_output` and
-`XStructuredRunnable`, the only parts of the library that depend on
-`langchain-core`.
+`with_xstructured_output(runnable, schema)` returns an `XStructuredRunnable`. It works
+with any Runnable whose output is a string or a LangChain message: chat models, LLMs,
+chains, and your own Runnables.
 
-## Wrapping a chat model
+## Inputs
 
-Any `Runnable` that returns a `str` or a `BaseMessage` can be wrapped
-directly:
+With `inject_instructions=True` (the default), the schema instructions are added to the
+input before the wrapped Runnable runs:
+
+| Input | How instructions are added |
+| --- | --- |
+| `str` | Appended after a blank line. |
+| `PromptValue` | Becomes a chat prompt with the instructions as a system message. |
+| Messages or message-like values (`BaseMessage`, `("human", "...")`, `{"role": ..., "content": ...}`) | Appended to a leading system message, or prepended as a new one. |
+| Anything else, such as a dict | `TypeError` before the model is called. |
+
+For dictionary inputs, for example a chain that starts with a prompt template, pass
+`inject_instructions=False` and include `wrapper.instructions` (or
+`schema_instructions(...)`) in your prompt. See the
+[quickstart](../getting-started/quickstart.md#wrap-a-chain).
+
+## Outputs
+
+| Method | Returns |
+| --- | --- |
+| `invoke`, `ainvoke` | `XStructuredResult` |
+| `batch`, `abatch` | a list of `XStructuredResult` (native LangChain batching, including `return_exceptions`) |
+| `stream`, `astream` | ordered `StreamEvent` values ending with one `RESULT` event |
+| `transform`, `atransform` (inside a composed chain) | the final `XStructuredResult` |
+
+An `XStructuredResult` has:
+
+| Field | Meaning |
+| --- | --- |
+| `content` | The response text with every envelope removed. |
+| `structured` | The validated value. |
+| `raw` | The wrapped Runnable's output; for streams of message chunks, the merged message. |
+| `raw_text`, `json_text` | The response text, and the exact JSON that validated. |
+| `recovered`, `repaired`, `repair_attempts` | How the value was obtained. |
+| `schema_name` | The matched name, for named schemas. |
+| `metadata` | Fingerprint, envelope count, timing, and message metadata. |
+
+## Composition
+
+The wrapper is a regular Runnable, so LangChain's tools apply:
 
 ```python
 from langchain.chat_models import init_chat_model
+from pydantic import BaseModel
+
 from xstructured import with_xstructured_output
 
-model = init_chat_model("openai:gpt-4o-mini")
-extractor = with_xstructured_output(model, ContactInfo)
-result = extractor.invoke("Reach Priya Shah at priya.shah@example.com.")
+
+class Summary(BaseModel):
+    title: str
+    bullets: list[str]
+
+
+gpt = init_chat_model("openai:gpt-5-mini")
+claude = init_chat_model("anthropic:claude-sonnet-4-5")
+primary = with_xstructured_output(gpt, Summary)
+backup = with_xstructured_output(claude, Summary)
+
+robust = primary.with_retry(stop_after_attempt=2).with_fallbacks([backup])
+summaries = robust.batch(["Summarize document A", "Summarize document B"])
 ```
 
-## Wrapping a `create_agent` agent
-
-`create_agent`'s compiled graph takes and returns a `{"messages": [...]}`
-dict, not a bare `str`/`BaseMessage`/message sequence, so it needs a small
-`RunnableLambda` adapter before it can be wrapped:
+In a sequence, downstream steps receive the `XStructuredResult`, whether the chain is
+invoked or streamed:
 
 ```python
-from langchain.agents import create_agent
 from langchain_core.runnables import RunnableLambda
-from xstructured import with_xstructured_output
 
-agent = create_agent(model="openai:gpt-4o-mini", tools=[])
-
-
-def run_agent(messages):
-    state = agent.invoke({"messages": list(messages)})
-    return state["messages"][-1]
-
-
-extractor = with_xstructured_output(RunnableLambda(run_agent), ContactInfo)
+titles = primary | RunnableLambda(lambda result: result.structured.title)
 ```
 
-See [`examples/single_agent_extraction.py`](https://github.com/xstructured/xstructured/blob/main/examples/single_agent_extraction.py)
-and [`examples/multi_agent_pipeline.py`](https://github.com/xstructured/xstructured/blob/main/examples/multi_agent_pipeline.py)
-for complete, runnable versions of this pattern, including a two-agent
-pipeline where each agent is wrapped and validated independently.
+## Typing
 
-## Why wrap instead of `output_schema`?
-
-`create_agent(..., output_schema=SomeModel)` already exists and is the
-right default when it applies. `xstructured` is for the situations that
-do not cover: plain `Runnable`s with no agent-level schema hook,
-already-built agents/chains you cannot or do not want to reconstruct,
-incremental streaming of structured output, and providers where native
-structured-output support is unavailable or undesirable.
-
-See [Why xstructured?](why-xstructured.md) for ten concrete application
-scenarios and guidance on when LangChain or LangGraph native features are the
-better choice.
-
-## Instruction injection
-
-`XStructuredRunnable` automatically injects a system message built from
-`schema_instructions` for `str`, `PromptValue`, or `Sequence[BaseMessage]`
-inputs (pass `inject_instructions=False` to `with_xstructured_output` to
-disable this). It does **not** inspect or modify dict-shaped input (such as
-`create_agent`'s native `{"messages": [...]}` state) -- this is exactly why
-the `RunnableLambda` adapter above narrows the input to a message sequence
-first.
-
-## Streaming
+`with_xstructured_output` is fully typed. Type checkers infer the value type from the
+schema:
 
 ```python
-for event in extractor.stream([HumanMessage(content="...")]):
-    match event.kind:
-        case StreamEventKind.TEXT_DELTA:
-            print(event.text, end="")
-        case StreamEventKind.RESULT:
-            print(event.result.structured)
+from langchain_core.runnables import RunnableLambda
+
+
+def respond(question: str) -> str:
+    return "..."
+
+
+wrapper = with_xstructured_output(RunnableLambda(respond), Summary)
+# XStructuredRunnable[str, Summary]: invoke(...).structured is a Summary
+
+many = with_xstructured_output(RunnableLambda(respond), Summary, multiple=True)
+# XStructuredRunnable[str, list[Summary]]
 ```
 
-See [Streaming](../concepts/streaming.md) for the full event-ordering
-contract.
+Named envelopes produce `dict[str, Any]`; named schemas without envelopes produce `Any`,
+because the value can be any of the named types.
+
+## Tracing and callbacks
+
+Each call is one traced run with the wrapped Runnable as a child run, and
+`with_config(run_name=..., tags=..., metadata=...)` works as usual. See
+[Observability](../guide/observability.md).

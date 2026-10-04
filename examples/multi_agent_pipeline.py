@@ -1,79 +1,94 @@
-"""Multi-agent pipeline: an extractor agent feeding a reviewer agent.
+"""Chain two agents, each with its own validated output.
 
-Two independent `create_agent` agents are each wrapped with
-`with_xstructured_output` against their own schema. The first agent's
-validated structured output is serialized and handed to the second agent,
-which reviews it and returns its own validated verdict. This demonstrates
-composing several xstructured-wrapped agents into a pipeline, not a single
-shared agent loop.
+An extractor agent turns a free-text expense report into an ``ExpenseClaim``;
+a reviewer agent checks that claim against a policy and returns a
+``ClaimReview``. Each agent is wrapped independently, so every hand-off
+between agents is schema-validated.
 
-Requires EXPLABS_API_KEY. Install the example dependencies first:
-
-    uv sync --group examples
-    $env:EXPLABS_API_KEY = "..."
-    uv run python examples/multi_agent_pipeline.py
+Run it with ``uv run python examples/multi_agent_pipeline.py``.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
-from _shared import explabs_chat_model, print_result_header, require_env, require_package
+from _shared import banner, chat_model, require_packages
 
-require_package("langchain", extra_group="examples")
-require_env("EXPLABS_API_KEY")
+require_packages("langchain")
 
-from langchain.agents import create_agent  # noqa: E402
-from langchain_core.messages import BaseMessage, HumanMessage  # noqa: E402
-from langchain_core.runnables import RunnableLambda  # noqa: E402
-from pydantic import BaseModel  # noqa: E402
+from langchain.agents import create_agent
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.runnables import RunnableLambda
+from pydantic import BaseModel, Field
 
-from xstructured import with_xstructured_output  # noqa: E402
+from xstructured import with_xstructured_output
+
+EXTRACTOR_REPLY = (
+    "Extracted one transportation expense.\n"
+    "<xstructured>"
+    '{"amount_usd": 63.5, "category": "transportation", '
+    '"description": "Taxi from the airport to the client site"}'
+    "</xstructured>"
+)
+REVIEWER_REPLY = (
+    "The claim is within policy.\n"
+    "<xstructured>"
+    '{"approved": true, '
+    '"reason": "Under the $75 receipt threshold and not alcohol."}'
+    "</xstructured>"
+)
+POLICY = "Receipts are required above $75. Alcohol is never reimbursed."
 
 
 class ExpenseClaim(BaseModel):
-    """A single expense line item extracted from a free-text report."""
+    """One expense line item."""
 
-    amount_usd: float
+    amount_usd: float = Field(gt=0)
     category: str
     description: str
 
 
 class ClaimReview(BaseModel):
-    """A reviewer agent's verdict on an extracted expense claim."""
+    """A reviewer's decision on an expense claim."""
 
     approved: bool
     reason: str
 
 
-def _agent_runnable(tools: list | None = None):
-    agent = create_agent(model=explabs_chat_model(), tools=tools or [])
+def agent_runnable(model: BaseChatModel, instructions: str) -> RunnableLambda:
+    agent = create_agent(model=model, tools=[], system_prompt=instructions)
 
-    def _invoke(messages: Sequence[BaseMessage]) -> BaseMessage:
-        state = agent.invoke({"messages": list(messages)})
-        return state["messages"][-1]
+    def run(messages: Sequence[BaseMessage]) -> BaseMessage:
+        return agent.invoke({"messages": list(messages)})["messages"][-1]
 
-    return RunnableLambda(_invoke)
+    return RunnableLambda(run)
 
 
 def main() -> None:
-    extractor = with_xstructured_output(_agent_runnable(), ExpenseClaim)
-    reviewer = with_xstructured_output(_agent_runnable(), ClaimReview)
-
-    report = "Taxi from the airport to the client site cost $63.50."
-    claim_result = extractor.invoke([HumanMessage(content=report)])
-
-    print_result_header("Extractor agent")
-    print(f"Structured claim: {claim_result.structured!r}")
-
-    review_prompt = (
-        "Review this expense claim for a standard corporate travel policy "
-        f"(receipts required over $75, no alcohol): {claim_result.structured.model_dump_json()}"
+    extractor = with_xstructured_output(
+        agent_runnable(
+            chat_model(EXTRACTOR_REPLY), "You extract expense claims."
+        ),
+        ExpenseClaim,
     )
-    review_result = reviewer.invoke([HumanMessage(content=review_prompt)])
+    reviewer = with_xstructured_output(
+        agent_runnable(
+            chat_model(REVIEWER_REPLY), f"You review expenses. Policy: {POLICY}"
+        ),
+        ClaimReview,
+    )
 
-    print_result_header("Reviewer agent")
-    print(f"Structured review: {review_result.structured!r}")
+    claim = extractor.invoke(
+        [HumanMessage("Taxi from the airport to the client site cost $63.50.")]
+    ).structured
+    review = reviewer.invoke(
+        [HumanMessage(f"Review this claim: {claim.model_dump_json()}")]
+    ).structured
+
+    banner("Multi-agent pipeline")
+    print(f"Claim:  {claim!r}")
+    print(f"Review: {review!r}")
 
 
 if __name__ == "__main__":

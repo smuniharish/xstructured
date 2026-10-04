@@ -1,55 +1,98 @@
-# Integration guide
+# Integration patterns
 
-Use the verified integration patterns from the repository instead of inventing a
-custom wrapper:
-
-- [LangChain integration](https://xstructured.readthedocs.io/en/latest/integrations/langchain/)
-- [Project README](https://github.com/smuniharish/xstructured/blob/master/README.md)
-- [Single-agent extraction example](https://github.com/smuniharish/xstructured/blob/master/examples/single_agent_extraction.py)
-- [Multi-agent pipeline example](https://github.com/smuniharish/xstructured/blob/master/examples/multi_agent_pipeline.py)
-
-## Wrap a chat model
-
-Any `Runnable` that returns a `str` or a `BaseMessage` can be wrapped directly:
+## Chat model
 
 ```python
 from langchain.chat_models import init_chat_model
+from pydantic import BaseModel
+
 from xstructured import with_xstructured_output
 
-model = init_chat_model("openai:gpt-4o-mini")
-extractor = with_xstructured_output(model, ContactInfo)
-result = extractor.invoke("Reach Priya Shah at priya.shah@example.com.")
+
+class Summary(BaseModel):
+    title: str
+    bullets: list[str]
+
+
+model = init_chat_model("openai:gpt-5-mini")
+summarizer = with_xstructured_output(model, Summary)
+result = summarizer.invoke("Summarize the release notes.")
 ```
 
-## Wrap a create_agent graph
+String inputs get the instructions appended; message lists get them in a system message.
 
-`create_agent` emits `{"messages": [...]}` state, not a bare string or message,
-so the adapter narrows the state to its final message before wrapping:
+## Chain with a prompt template
+
+A prompt template takes a dict, which cannot carry injected instructions. Put the
+instructions in the prompt and disable injection:
 
 ```python
-from langchain.agents import create_agent
-from langchain_core.runnables import RunnableLambda
-from xstructured import with_xstructured_output
+from langchain_core.prompts import ChatPromptTemplate
 
-agent = create_agent(model="openai:gpt-4o-mini", tools=[])
+from xstructured import EnvelopeSpec, schema_instructions
 
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You summarize documents.\n\n{instructions}"),
+        ("human", "{document}"),
+    ]
+).partial(instructions=schema_instructions(Summary, envelope=EnvelopeSpec()))
 
-def run_agent(messages):
-    state = agent.invoke({"messages": list(messages)})
-    return state["messages"][-1]
-
-extractor = with_xstructured_output(RunnableLambda(run_agent), ContactInfo)
+chain = with_xstructured_output(
+    prompt | init_chat_model("openai:gpt-5-mini"),
+    Summary,
+    inject_instructions=False,
+)
+result = chain.invoke({"document": "..."})
 ```
 
-## Use native features when they already fit
+## create_agent and Deep Agents
 
-`create_agent(..., output_schema=SomeModel)` is already the right default when
-it matches the response contract. `xstructured` is the adapter when the app needs
-one boundary for a runnable, streaming events, or a cross-provider output
-contract without changing the rest of the graph.
+Agent graphs exchange `{"messages": [...]}` state. Adapt them at the boundary:
 
-## Keep the boundaries narrow
+```python
+from collections.abc import Sequence
 
-Do not modify the underlying model, agent, or graph orchestration just to add
-xstructured. Prefer a thin adapter at the boundary and keep validation inside
-the wrapper.
+from langchain.agents import create_agent
+from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.runnables import RunnableLambda
+
+agent = create_agent(model="openai:gpt-5-mini", tools=[])
+
+
+def run_agent(messages: Sequence[BaseMessage]) -> BaseMessage:
+    return agent.invoke({"messages": list(messages)})["messages"][-1]
+
+
+typed_agent = with_xstructured_output(RunnableLambda(run_agent), Summary)
+result = typed_agent.invoke([HumanMessage("Summarize the incident.")])
+```
+
+The same adapter works for `deepagents.create_deep_agent`. With a checkpointer, prefer
+`inject_instructions=False` and put `typed_agent.instructions` in the agent's
+`system_prompt`, so instructions are not appended to the stored history on every call.
+
+## LangGraph node
+
+Call the wrapper inside a node and store `result.structured` in state; route with
+conditional edges on typed fields such as a `Literal` priority.
+
+## Composition
+
+The wrapper is a normal Runnable:
+
+- `wrapper.with_retry(...)`, `wrapper.with_fallbacks([...])`, `wrapper.with_config(...)`;
+- `wrapper.batch([...])` and `await wrapper.abatch([...])`;
+- `wrapper | next_step`: the next step receives the `XStructuredResult`, whether the chain
+  is invoked or streamed.
+
+Each call is one traced run with the wrapped Runnable as a child run.
+
+## Multiple values in one response
+
+| Need | Option | `structured` |
+| --- | --- | --- |
+| A list of one type | `multiple=True` | `list[T]` |
+| One of several types | `{"name": Schema, ...}` | the matched type; `schema_name` says which |
+| A list of mixed types | named schemas + `multiple=True` | list of mixed types |
+| Prose with one envelope per type | named schemas + `multiple_envelopes=True` | `dict[name, value]` |

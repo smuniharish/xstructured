@@ -1,19 +1,25 @@
 # Integrations
 
-`xstructured` integrates with the LangChain ecosystem at the `Runnable`
-level, so it works with anything that exposes LangChain's standard
-`invoke`/`ainvoke`/`batch`/`abatch`/`stream`/`astream` interface.
+`xstructured` integrates at the LangChain `Runnable` level, so it works with anything that
+implements the standard `invoke`, `batch`, `stream`, and async interface, and it depends
+only on `langchain-core`.
 
-- **[LangChain](langchain.md)** -- the primary integration:
-  `with_xstructured_output` wraps a chat model, `create_agent` agent, or
-  any other `Runnable`.
-- **[Deep Agents](deepagents.md)** -- an optional integration for
-  [`deepagents`](https://github.com/langchain-ai/deepagents)'s
-  `create_deep_agent`, using the same wrapping pattern as `create_agent`.
+<div class="grid cards" markdown>
 
-Neither `langchain` (the agent-construction package) nor `deepagents` is a
-required dependency of `xstructured` -- only `langchain-core` is. Both
-integrations are demonstrated as env-gated scripts under
-[`examples/`](../examples/index.md) rather than as installable extras,
-since there is no `xstructured`-owned integration code beyond the
-`RunnableLambda` adapter pattern shown there.
+-   :material-link-variant: __[LangChain Runnables](langchain.md)__
+
+    Chat models, chains, prompt templates, composition, batching, and tracing.
+
+-   :material-robot-outline: __[Agents and Deep Agents](agents.md)__
+
+    `create_agent` and `create_deep_agent` graphs through a small adapter.
+
+-   :material-graph-outline: __[LangGraph](langgraph.md)__
+
+    Validated values in graph state and routing on typed fields.
+
+-   :material-help-circle-outline: __[Why xstructured?](why-xstructured.md)__
+
+    When it helps, and when LangChain's native structured output is the better choice.
+
+</div>

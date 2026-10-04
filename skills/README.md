@@ -1,27 +1,23 @@
-# xstructured Agent Skills
+# Agent Skills
 
-This directory is the canonical Agent Skills distribution for the `xstructured`
-Python package.
+This directory contains the [Agent Skill](https://agentskills.io) for `xstructured`. It
+teaches AI coding agents when and how to use the package; it is documentation, not part of
+the installed library.
 
-Official documentation: https://xstructured.readthedocs.io/
-Repository: https://github.com/smuniharish/xstructured
+| Path | Purpose |
+| --- | --- |
+| [`xstructured/SKILL.md`](xstructured/SKILL.md) | Metadata, decision guide, workflow, core patterns, and rules. |
+| [`xstructured/references/`](xstructured/references) | API, integration, streaming, configuration, and troubleshooting references loaded on demand. |
 
-It is not a runtime library and does not add behavior at import time. It
-contains the guidance agents need when integrating, configuring, debugging, or
-validating the package against existing LangChain and Pydantic workflows.
+Install it with the [skills CLI](https://skills.sh):
 
-| Component | Location | Purpose |
-| --- | --- | --- |
-| xstructured runtime | [`src/xstructured/`](../src/xstructured) | Published Python package and supported public API. |
-| Canonical agent skill | [`xstructured/SKILL.md`](xstructured/SKILL.md) | Agent-oriented instructions for integration and validation. |
-| Reference material | [`xstructured/references/`](xstructured/references) | Concise architecture, integration, configuration, and troubleshooting notes. |
-| Skill validation | [`../validation/README.md`](../validation/README.md) | Structural and source-grounded validation for the distribution. |
+```bash
+npx skills add smuniharish/xstructured --skill xstructured
+```
 
-The canonical skill follows the Agent Skills `SKILL.md` format: a single
-repository-scoped Markdown instruction file with required `name` and
-`description` YAML frontmatter. The `name` matches the containing directory
-(`xstructured`).
+or copy the `xstructured/` directory into your agent's skills directory. See the
+[documentation](https://xstructured.readthedocs.io/en/latest/agent-skill/) for agent-specific
+locations.
 
-Use the canonical skill when working on LangChain Runnable integration, schema
-injection, extraction recovery, typed streaming, or structured-output validation
-without inventing a second parsing framework.
+The skill is validated with `uvx --from skills-ref agentskills validate skills/xstructured`
+and by `tests/test_skill.py`, which checks its metadata, links, and code examples.

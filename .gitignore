@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.py[cod]
 *.egg-info/
 .eggs/
@@ -11,11 +11,12 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.hypothesis/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 site/
-docs/_build/
 .vscode/
 .idea/
 *.log

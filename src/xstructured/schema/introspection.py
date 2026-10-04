@@ -3,53 +3,79 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TypeAlias
+from typing import Any
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, PydanticUserError, TypeAdapter
 
 from xstructured.core.errors import SchemaError
 
-SchemaTarget: TypeAlias = type[BaseModel] | TypeAdapter[Any] | Any
+__all__ = ["SchemaInfo", "SchemaTarget", "inspect_schema"]
+
+type SchemaTarget = type[BaseModel] | TypeAdapter[Any] | Any
+"""Anything Pydantic v2 can validate: a model class, a `TypeAdapter`, or a type annotation."""
+
+_FALLBACK_NAME = "structured output"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class SchemaInfo:
-    """The Pydantic adapter and JSON Schema for a target annotation."""
+    """A schema target resolved to a Pydantic adapter and its JSON Schema.
+
+    Attributes:
+        target: The original schema target.
+        adapter: The `TypeAdapter` used for validation.
+        json_schema: The target's JSON Schema in validation mode. Treat it as read-only.
+        name: Display name: the schema title, the target's ``__name__``, or
+            ``"structured output"``.
+    """
 
     target: SchemaTarget
     adapter: TypeAdapter[Any]
     json_schema: dict[str, Any]
     name: str
 
-    def validate_python(self, value: Any) -> Any:
-        """Validate a Python value against the target."""
-        return self.adapter.validate_python(value)
+    def validate_json(self, text: str) -> Any:
+        """Validate JSON *text* against the target using Pydantic's JSON mode.
 
-    def validate_json(self, value: str | bytes | bytearray) -> Any:
-        """Validate JSON text against the target."""
-        return self.adapter.validate_json(value)
+        Raises:
+            pydantic.ValidationError: If the value does not match the schema.
+        """
+        return self.adapter.validate_json(text)
 
 
-def inspect_schema(target: SchemaTarget) -> SchemaInfo:
-    """Build a Pydantic v2 adapter and JSON Schema for *target*."""
+def inspect_schema(target: SchemaTarget | SchemaInfo) -> SchemaInfo:
+    """Resolve *target* to a `SchemaInfo`. A `SchemaInfo` is returned unchanged.
+
+    Raises:
+        SchemaError: If Pydantic cannot build a validator or JSON Schema for *target*.
+    """
+    if isinstance(target, SchemaInfo):
+        return target
     try:
-        adapter = target if isinstance(target, TypeAdapter) else TypeAdapter(target)
+        adapter = (
+            target if isinstance(target, TypeAdapter) else TypeAdapter(target)
+        )
         schema = adapter.json_schema(mode="validation")
-    except (TypeError, ValueError, AttributeError) as exc:
-        raise SchemaError(f"Cannot introspect schema target {target!r}") from exc
+    except (
+        AttributeError,
+        NameError,
+        PydanticUserError,
+        SyntaxError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise SchemaError(
+            f"Cannot introspect schema target {target!r}: {exc}"
+        ) from exc
+    name = _name(target, schema)
+    return SchemaInfo(
+        target=target, adapter=adapter, json_schema=schema, name=name
+    )
 
-    if not isinstance(schema, dict):
-        raise SchemaError("Pydantic returned a non-object JSON Schema")
 
-    name = _schema_name(target, schema)
-    return SchemaInfo(target=target, adapter=adapter, json_schema=schema, name=name)
-
-
-def _schema_name(target: SchemaTarget, schema: dict[str, Any]) -> str:
+def _name(target: object, schema: dict[str, Any]) -> str:
     title = schema.get("title")
     if isinstance(title, str) and title:
         return title
-    target_name = getattr(target, "__name__", None)
-    if isinstance(target_name, str) and target_name:
-        return target_name
-    return "structured output"
+    name = getattr(target, "__name__", None)
+    return name if isinstance(name, str) and name else _FALLBACK_NAME

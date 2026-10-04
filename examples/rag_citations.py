@@ -1,53 +1,76 @@
-"""RAG-style answer generation with explicit, validated citations."""
+"""Answer from retrieved documents with validated citations.
+
+The schema requires at least one citation, and a post-validation check
+confirms that every citation points at a retrieved document and quotes it
+verbatim.
+
+Run it with ``uv run python examples/rag_citations.py``.
+"""
 
 from __future__ import annotations
 
-from _shared import explabs_chat_model, print_result_header, require_env, require_package
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field
 
-require_package("langchain", extra_group="examples")
-require_env("EXPLABS_API_KEY")
+from _shared import banner, chat_model
+from xstructured import with_xstructured_output
 
-from langchain_core.messages import HumanMessage  # noqa: E402
-from pydantic import BaseModel, Field  # noqa: E402
-
-from xstructured import with_xstructured_output  # noqa: E402
+DOCUMENTS = {
+    "runbook-17": (
+        "Deploys use canary traffic for ten minutes before full rollout."
+    ),
+    "policy-4": "Production changes require an approved change record.",
+}
+SCRIPTED_REPLY = (
+    "Two requirements apply before a production rollout.\n"
+    "<xstructured>"
+    '{"answer": "You need an approved change record, and the deploy must run '
+    'on canary traffic for ten minutes before full rollout.", "citations": ['
+    '{"source_id": "policy-4", '
+    '"quote": "Production changes require an approved change record."}, '
+    '{"source_id": "runbook-17", '
+    '"quote": "Deploys use canary traffic for ten minutes before full '
+    'rollout."}]}'
+    "</xstructured>"
+)
 
 
 class Citation(BaseModel):
-    """A citation pointing at one retrieved document."""
+    """A verbatim quote from one retrieved document."""
 
     source_id: str
     quote: str
 
 
 class CitedAnswer(BaseModel):
-    """An answer whose claims can be checked against retrieved context."""
+    """An answer whose claims are backed by retrieved documents."""
 
     answer: str
     citations: list[Citation] = Field(min_length=1)
 
 
-DOCUMENTS = {
-    "runbook-17": "Deploys use canary traffic for ten minutes before full rollout.",
-    "policy-4": "Production changes require an approved change record.",
-}
-
-
 def main() -> None:
-    context = "\n".join(f"[{key}] {value}" for key, value in DOCUMENTS.items())
-    prompt = (
-        "Answer the question using only the retrieved documents. Cite every important claim "
-        "with a source_id and a short verbatim quote.\n\n"
-        "Retrieved documents:\n"
-        f"{context}\n\nQuestion: What is required before a production rollout?"
+    context = "\n".join(
+        f"[{source}] {text}" for source, text in DOCUMENTS.items()
     )
-    result = with_xstructured_output(explabs_chat_model(), CitedAnswer).invoke(
-        [HumanMessage(content=prompt)]
+    question = "What is required before a production rollout?"
+    result = with_xstructured_output(
+        chat_model(SCRIPTED_REPLY), CitedAnswer
+    ).invoke(
+        [
+            HumanMessage(
+                "Answer using only these documents. Cite every claim with its "
+                f"source_id and a verbatim quote.\n\n{context}\n\n"
+                f"Question: {question}"
+            )
+        ]
     )
-    print_result_header("RAG answer with citations")
+
+    banner("RAG answer with citations")
     print(f"Answer: {result.structured.answer}")
     for citation in result.structured.citations:
-        print(f"[{citation.source_id}] {citation.quote}")
+        verified = citation.quote in DOCUMENTS.get(citation.source_id, "")
+        print(f"[{citation.source_id}] {citation.quote} (verified: {verified})")
 
 
 if __name__ == "__main__":

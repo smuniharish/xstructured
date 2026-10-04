@@ -1,6 +1,12 @@
-"""Delimited envelope specifications and streaming scanner."""
+"""Envelope delimiters and incremental envelope scanning."""
 
 from .scanner import EnvelopeScanner, EnvelopeState, ScanEvent
-from .spec import EnvelopeSpec
+from .spec import NAME_PATTERN, EnvelopeSpec
 
-__all__ = ["EnvelopeScanner", "EnvelopeSpec", "EnvelopeState", "ScanEvent"]
+__all__ = [
+    "NAME_PATTERN",
+    "EnvelopeScanner",
+    "EnvelopeSpec",
+    "EnvelopeState",
+    "ScanEvent",
+]

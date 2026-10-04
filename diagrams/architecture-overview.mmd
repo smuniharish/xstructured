@@ -1,10 +1,23 @@
-flowchart LR
-    Runnable["Wrapped Runnable\n(chat model, create_agent, deepagents)"] --> Wrapper["with_xstructured_output()"]
-    Schema["Pydantic v2 schema"] --> Instructions["schema_instructions()"]
-    Instructions -->|"SystemMessage injected"| Runnable
-    Wrapper --> Envelope["EnvelopeScanner"]
-    Envelope --> Parser["StructuredParser"]
-    Parser -->|"conservative recovery"| Result["XStructuredResult"]
-    Result --> Content["content (natural language)"]
-    Result --> Structured["structured (validated model)"]
-    Result --> Raw["raw (original message)"]
+flowchart TB
+    input(["Input from your application"])
+    inject["`**1 · Add schema instructions**
+    to a string, PromptValue, or message list`"]
+    runnable["`**2 · Run the wrapped Runnable**
+    chat model, chain, or agent adapter`"]
+    parse["`**3 · Parse and validate**
+    envelope · recovery · strict JSON · Pydantic`"]
+    repair["`**Repair Runnable**
+    optional and bounded`"]
+    result(["`**XStructuredResult**
+    content · structured · raw · metadata`"])
+
+    input --> inject --> runnable
+    runnable -->|"text or message"| parse
+    parse -->|valid| result
+    parse -.->|"invalid, when configured"| repair
+    repair -.->|"corrected response"| parse
+
+    classDef success fill:#ECFDF5,stroke:#059669,color:#064E3B
+    classDef optional fill:#FFF7ED,stroke:#D97706,color:#7C2D12,stroke-dasharray: 5 4
+    class result success
+    class repair optional
