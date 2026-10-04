@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "xstructured"
-version = "0.1.0"
+version = "0.1.1"
 description = "Schema-guided structured output for LangChain v1 Runnables and agents: validated Pydantic v2 data and natural-language text from one response, with conservative recovery and ordered streaming."
 readme = "README.md"
 license = "Apache-2.0"
