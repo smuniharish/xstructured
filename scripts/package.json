@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "12.0.0",
-    "puppeteer": "25.12.0"
+    "puppeteer": "25.16.0"
   },
   "allowScripts": {
     "puppeteer@25.12.0": true
