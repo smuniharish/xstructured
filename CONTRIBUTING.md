@@ -11,7 +11,7 @@ replace is an abstract base class with a default and a contract suite in
 
 ## Before opening a change
 
-1. Read the [architecture overview](docs/architecture.md).
+1. Read the [architecture overview](https://github.com/smuniharish/xstructured/blob/master/docs/architecture.md).
 2. Open an issue first for changes to the public API, the envelope contract,
    the stream events, or an integration.
 3. Keep each change focused, with tests and documentation for anything a user
@@ -44,17 +44,17 @@ Never commit credentials, local environments, or generated reports.
 
 ## Examples and benchmark
 
-- Examples in [`examples/`](examples) are async and must run offline through
+- Examples in [`examples/`](https://github.com/smuniharish/xstructured/tree/master/examples) are async and must run offline through
   the scripted model in `examples/_shared.py`. Add new ones to
   `tests/test_examples.py` with their expected output, and give each a page
-  under [`docs/examples/`](docs/examples).
+  under [`docs/examples/`](https://github.com/smuniharish/xstructured/tree/master/docs/examples).
 - Add parser edge cases to `benchmarks/cases.json` with an explicit expected
   value, or `null` when the input must be rejected, then run
   `uv run python -m benchmarks`.
 
 ## Agent Skills
 
-The two skills live in [`xstructured-skills/skills/`](xstructured-skills/skills).
+The two skills live in [`xstructured-skills/skills/`](https://github.com/smuniharish/xstructured/tree/master/xstructured-skills/skills).
 Keep them accurate when public behavior changes; `tests/skill` checks their
 format, links, evaluations, scripts, and templates:
 
@@ -66,7 +66,7 @@ uvx --from skills-ref agentskills validate \
   xstructured-skills/skills/xstructured-extend
 ```
 
-The [validation guide](xstructured-skills/validation/README.md) describes how
+The [validation guide](https://github.com/smuniharish/xstructured/blob/master/xstructured-skills/validation/README.md) describes how
 to evaluate a change against real tasks.
 
 ## Documentation and diagrams
@@ -84,7 +84,7 @@ uv run zensical build --strict
 uv run python scripts/check_site_links.py
 ```
 
-Diagrams are Mermaid sources under [`diagrams/`](diagrams), rendered to PNG at
+Diagrams are Mermaid sources under [`diagrams/`](https://github.com/smuniharish/xstructured/tree/master/diagrams), rendered to PNG at
 twice their size with Mermaid CLI 12.2.0. Install it globally; it needs
 Node.js 22.13 or later. `--allow-scripts=puppeteer` lets Puppeteer download
 the headless browser the CLI renders with:
@@ -103,8 +103,8 @@ width (at most 656 pixels) so its text matches the page.
 
 - Describe the user-visible effect of the change.
 - Add or update tests for every behavior change.
-- Update the affected pages under [`docs/`](docs), the skills, and the
-  [changelog](CHANGELOG.md).
+- Update the affected pages under [`docs/`](https://github.com/smuniharish/xstructured/tree/master/docs), the skills, and the
+  [changelog](https://github.com/smuniharish/xstructured/blob/master/CHANGELOG.md).
 - Make sure formatting, lint, type checks, tests, the strict docs build, and
   the diagram check pass.
 
@@ -120,7 +120,7 @@ Releases follow [semantic versioning](https://semver.org/). To publish one:
 3. Merge to `master`, then publish a GitHub release whose tag is the version
    with a `v` prefix, such as `v1.0.0`.
 
-The [release workflow](.github/workflows/release.yml) checks that the tag
+The [release workflow](https://github.com/smuniharish/xstructured/blob/master/.github/workflows/release.yml) checks that the tag
 matches the version, builds and checks the distributions, and publishes them
 to PyPI with trusted publishing, so no API token is stored in the repository.
 A maintainer adds the workflow as a trusted publisher in the PyPI project
@@ -129,4 +129,4 @@ environment `pypi`).
 
 ## Security reports
 
-Do not report vulnerabilities in public issues. Follow [SECURITY.md](SECURITY.md).
+Do not report vulnerabilities in public issues. Follow [SECURITY.md](https://github.com/smuniharish/xstructured/blob/master/SECURITY.md).
