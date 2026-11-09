@@ -2,7 +2,7 @@
 
 `create_deep_agent` builds a planning agent with sub-agents and a virtual filesystem on
 top of LangGraph. It exchanges the same `{"messages": [...]}` state as `create_agent`, so
-the same adapter validates its final summary.
+the same `XStructuredMiddleware` validates its final summary.
 
 ```python title="examples/deep_agent.py"
 --8<-- "examples/deep_agent.py"

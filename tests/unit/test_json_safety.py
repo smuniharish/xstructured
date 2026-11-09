@@ -4,7 +4,10 @@ import json
 
 import pytest
 
-from xstructured.parser.json_safety import JsonSafetyError, loads_strict
+from xstructured.contracts import JsonDecoder
+from xstructured.parser.json_safety import JsonSafetyError, StrictJsonDecoder
+
+loads_strict = StrictJsonDecoder().decode
 
 
 def test_decodes_standard_json() -> None:
@@ -39,3 +42,21 @@ def test_decoder_recursion_is_reported_as_a_safety_error() -> None:
     depth = 200_000
     with pytest.raises(JsonSafetyError, match="too deep"):
         loads_strict("[" * depth + "]" * depth, max_nesting_depth=depth)
+
+
+def test_strict_decoder_validates_the_candidate_text_unchanged() -> None:
+    decoder = StrictJsonDecoder()
+
+    assert isinstance(decoder, JsonDecoder)
+    assert decoder.json_text('{"a":  1}', {"a": 1}) == '{"a":  1}'
+
+
+def test_base_decoder_serializes_the_decoded_value() -> None:
+    class Lenient(JsonDecoder):
+        def decode(self, text: str, *, max_nesting_depth: int) -> object:
+            del max_nesting_depth
+            return json.loads(text.replace("'", '"'))
+
+    decoder = Lenient()
+
+    assert decoder.json_text("{'a': '?'}", {"a": "?"}) == '{"a": "?"}'

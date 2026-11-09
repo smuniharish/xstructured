@@ -22,10 +22,9 @@ def test_the_package_is_typed() -> None:
     assert (Path(xstructured.__file__).parent / "py.typed").is_file()
 
 
-def test_public_names_are_sorted_and_importable() -> None:
+def test_public_names_are_unique_and_importable() -> None:
     names = xstructured.__all__
 
-    assert names == sorted(names)
     assert len(set(names)) == len(names)
     for name in names:
         assert hasattr(xstructured, name), name

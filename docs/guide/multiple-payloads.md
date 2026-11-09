@@ -7,16 +7,17 @@ responses with more than one.
 
 ![Multiple-payload modes](../assets/diagrams/multiple-payloads.png){ .diagram width="577" }
 
-In the examples on this page, a `RunnableLambda` that returns a canned response stands in
-for a chat model.
+In the examples on this page, `ScriptedChatModel` from
+[`xstructured.testing`](testing.md) stands in for a chat model.
 
 ```python
+import asyncio
 from typing import Literal
 
-from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
 
 from xstructured import with_xstructured_output
+from xstructured.testing import ScriptedChatModel
 
 
 class Finding(BaseModel):
@@ -29,8 +30,8 @@ class Action(BaseModel):
     action: str
 
 
-def model_replying(text: str) -> RunnableLambda:
-    return RunnableLambda(lambda _: text)
+def model_replying(text: str) -> ScriptedChatModel:
+    return ScriptedChatModel.of(text)
 ```
 
 ## A list of values
@@ -49,7 +50,7 @@ findings = with_xstructured_output(
     multiple=True,
 )
 
-result = findings.invoke("List the findings.")
+result = asyncio.run(findings.ainvoke("List the findings."))
 assert [finding.severity for finding in result.structured] == ["high", "low"]
 ```
 
@@ -75,7 +76,7 @@ mixed = with_xstructured_output(
     multiple=True,
 )
 
-result = mixed.invoke("Review the incident.")
+result = asyncio.run(mixed.ainvoke("Review the incident."))
 assert result.structured == [
     Finding(title="Error spike", severity="high"),
     Action(owner="platform", action="Add a canary"),
@@ -105,7 +106,7 @@ named = with_xstructured_output(
     multiple_envelopes=True,
 )
 
-result = named.invoke("Analyze the incident.")
+result = asyncio.run(named.ainvoke("Analyze the incident."))
 action = Action(owner="payments", action="Roll back")
 assert result.structured["action"] == action
 assert result.content == (
@@ -115,7 +116,7 @@ assert result.metadata["envelope_count"] == 2
 ```
 
 Named envelopes need tag-style delimiters such as the default `<xstructured>`. They can be
-streamed inside a composed chain but not with `stream()` directly; see
+streamed inside a composed chain but not with `astream()` directly; see
 [Streaming](streaming.md).
 
 ## What is never accepted

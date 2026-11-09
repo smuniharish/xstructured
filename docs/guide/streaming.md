@@ -2,8 +2,8 @@
 
 # Streaming
 
-Calling `stream()` or `astream()` on a wrapped Runnable yields ordered `StreamEvent`
-values while the model is still generating. Text can be shown immediately, and the
+Calling `astream()` (or `stream()`) on a wrapped Runnable yields ordered
+`StreamEvent` values while the model is still generating. Text can be shown immediately, and the
 structured value is validated the moment its envelope closes.
 
 ![Streaming protocol](../assets/diagrams/streaming-protocol.png){ .diagram width="628" }
@@ -21,15 +21,20 @@ Every event has a zero-based `sequence` number. Concatenating the `TEXT_DELTA` t
 
 ## Streaming a chat model
 
-Here LangChain's `GenericFakeChatModel` stands in for a real chat model; like one, it
-streams its reply as message chunks.
+Here `ScriptedChatModel` from [`xstructured.testing`](testing.md) stands in for
+a real chat model; like one, it streams its reply as message chunks.
 
 ```python
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage
+import asyncio
+
 from pydantic import BaseModel
 
-from xstructured import StreamEventKind, with_xstructured_output
+from xstructured import (
+    StreamEventKind,
+    XStructuredResult,
+    with_xstructured_output,
+)
+from xstructured.testing import ScriptedChatModel
 
 
 class StatusUpdate(BaseModel):
@@ -42,43 +47,53 @@ reply = (
     '<xstructured>{"status": "healthy", "next_step": "Promote to all regions."}'
     "</xstructured>"
 )
-model = GenericFakeChatModel(messages=iter([AIMessage(content=reply)]))
-wrapper = with_xstructured_output(model, StatusUpdate)
+wrapper = with_xstructured_output(ScriptedChatModel.of(reply), StatusUpdate)
 
-for event in wrapper.stream("How did the deploy go?"):
-    if event.kind is StreamEventKind.TEXT_DELTA:
-        print(event.text, end="")
-    elif event.kind is StreamEventKind.STRUCTURED_END:
-        print("\ncard:", event.structured)
-    elif event.kind is StreamEventKind.RESULT:
-        final = event.result
+
+async def render(message: str) -> XStructuredResult[StatusUpdate]:
+    async for event in wrapper.astream(message):
+        if event.kind is StreamEventKind.TEXT_DELTA:
+            print(event.text, end="")
+        elif event.kind is StreamEventKind.STRUCTURED_END:
+            print("\ncard:", event.structured)
+        elif event.kind is StreamEventKind.RESULT:
+            return event.result
+    raise AssertionError("a stream always ends with a RESULT event")
+
+
+final = asyncio.run(render("How did the deploy go?"))
 
 expected = StatusUpdate(status="healthy", next_step="Promote to all regions.")
 assert final.structured == expected
 assert final.raw.text == reply  # Message chunks are merged into one AIMessage.
 ```
 
-The final result matches what `invoke` returns, including the merged message's usage
+The final result matches what `ainvoke` returns, including the merged message's usage
 metadata.
 
 ## Streaming inside a chain
 
 Inside a composed chain the wrapper behaves like any other Runnable: when the chain is
 streamed, it consumes the wrapped Runnable's stream and passes its final
-`XStructuredResult` downstream, so every step receives exactly what `invoke` would produce.
+`XStructuredResult` downstream, so every step receives exactly what `ainvoke` would
+produce.
 
 ```python
 from langchain_core.runnables import RunnableLambda
 
-model = GenericFakeChatModel(messages=iter([AIMessage(content=reply)]))
-chain = with_xstructured_output(model, StatusUpdate) | RunnableLambda(
-    lambda result: result.structured.status
-)
+chain = with_xstructured_output(
+    ScriptedChatModel.of(reply), StatusUpdate
+) | RunnableLambda(lambda result: result.structured.status)
 
-assert list(chain.stream("How did the deploy go?")) == ["healthy"]
+
+async def statuses() -> list[str]:
+    return [status async for status in chain.astream("How did it go?")]
+
+
+assert asyncio.run(statuses()) == ["healthy"]
 ```
 
-To stream protocol events, call `stream()` on the wrapper itself; wrap the whole chain if
+To stream protocol events, call `astream()` on the wrapper itself; wrap the whole chain if
 you need a prompt in front of the model. `astream_events()` also surfaces both the
 model's token events and the wrapper's protocol events.
 
@@ -114,5 +129,8 @@ decoder enforces the parser's input, envelope, and payload limits as chunks arri
 - Streaming requires an envelope; there is no recovery for a missing one.
 - Repair is not attempted while streaming events, because events have already been
   delivered. Inside a composed chain, where only the final result is emitted, repair
-  works as with `invoke`.
-- Named envelopes (`multiple_envelopes=True`) cannot be streamed with `stream()`.
+  works as with `ainvoke`.
+- Named envelopes (`multiple_envelopes=True`) cannot be streamed with `astream()`.
+- Agents stream through LangGraph: use the agent's own `astream()` and read
+  `structured_response` from the final state; see
+  [Agents and Deep Agents](../integrations/agents.md).

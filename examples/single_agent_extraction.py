@@ -1,33 +1,42 @@
-"""Extract a validated contact record from a LangChain agent.
+"""Give a LangChain agent a validated final answer.
 
-A ``create_agent`` graph takes and returns ``{"messages": [...]}`` state. A
-small ``RunnableLambda`` adapts it to the message-in, message-out shape that
-``with_xstructured_output`` wraps; the agent itself is unchanged.
+``XStructuredMiddleware`` adds the schema instructions to every model call of
+a ``create_agent`` agent. Tool-calling turns run as usual; the final answer is
+validated and stored in the agent state as ``structured_response``.
 
 Run it with ``uv run python examples/single_agent_extraction.py``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
-from _shared import banner, chat_model, require_packages
-
-require_packages("langchain")
+import asyncio
 
 from langchain.agents import create_agent
-from langchain_core.messages import BaseMessage, HumanMessage
-from langchain_core.runnables import RunnableLambda
+from langchain_core.messages import AIMessage
+from langchain_core.tools import tool
 from pydantic import BaseModel
 
-from xstructured import with_xstructured_output
+from _shared import banner, chat_model
+from xstructured.agents import XStructuredMiddleware
 
+LOOKUP = AIMessage(
+    content="",
+    tool_calls=[
+        {"name": "lookup_company", "args": {"name": "Priya Shah"}, "id": "1"}
+    ],
+)
 SCRIPTED_REPLY = (
     "I found one contact in your message.\n\n"
     "<xstructured>"
     '{"name": "Priya Shah", "email": "priya.shah@example.com", '
     '"company": "Acme Corp"}'
     "</xstructured>"
+)
+
+
+REQUEST = (
+    "Please loop in Priya Shah (priya.shah@example.com) on the quarterly "
+    "review. Confirm in one short sentence who you found."
 )
 
 
@@ -39,32 +48,31 @@ class ContactInfo(BaseModel):
     company: str | None = None
 
 
-def main() -> None:
-    agent = create_agent(
-        model=chat_model(SCRIPTED_REPLY),
-        tools=[],
-        system_prompt="You extract contact details from messages.",
-    )
+@tool
+def lookup_company(name: str) -> str:
+    """Return the company a person works for, from the CRM."""
+    return "Acme Corp" if name == "Priya Shah" else "unknown"
 
-    def run_agent(messages: Sequence[BaseMessage]) -> BaseMessage:
-        return agent.invoke({"messages": list(messages)})["messages"][-1]
 
-    extractor = with_xstructured_output(RunnableLambda(run_agent), ContactInfo)
-    result = extractor.invoke(
-        [
-            HumanMessage(
-                "Please loop in Priya Shah (priya.shah@example.com) from Acme "
-                "Corp on the quarterly review. Confirm in one short sentence "
-                "who you found."
-            )
-        ]
-    )
+async def main() -> None:
+    async with chat_model(LOOKUP, SCRIPTED_REPLY) as model:
+        agent = create_agent(
+            model,
+            tools=[lookup_company],
+            system_prompt=(
+                "You extract contact details from messages. Look up the "
+                "company of every person you find."
+            ),
+            middleware=[XStructuredMiddleware(ContactInfo)],
+        )
+        state = await agent.ainvoke({"messages": [("human", REQUEST)]})
 
+    result = state["structured_response"]
     banner("Single-agent extraction")
     print(f"Reply:      {result.content.strip()!r}")
     print(f"Structured: {result.structured!r}")
-    print(f"Recovered:  {result.recovered}")
+    print(f"Tool calls: {sum(m.type == 'tool' for m in state['messages'])}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

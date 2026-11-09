@@ -1,7 +1,7 @@
 # User guide
 
-`xstructured` is built from small, independently usable layers. The LangChain wrapper
-combines all of them, and each is public for use on its own.
+`xstructured` is built from small, independently usable layers. The LangChain wrapper,
+agent middleware, and output parser combine them, and each is public for use on its own.
 
 | Layer | Public API | Guide |
 | --- | --- | --- |
@@ -12,8 +12,11 @@ combines all of them, and each is public for use on its own.
 | Streaming | `StreamDecoder`, `StreamEvent`, `StreamEventKind` | [Streaming](streaming.md) |
 | Repair | `repair=`, `RepairConfig` | [Bounded repair](repair.md) |
 | Limits | `ParserConfig`, `RecoveryConfig` | [Configuration and limits](configuration.md) |
+| Pydantic options | `SchemaOptions` | [Configuration and limits](configuration.md#pydantic-options) |
 | Errors | `ParseError` and its subclasses | [Error handling](errors.md) |
-| Operations | result metadata, tracing | [Observability](observability.md) |
+| Customization | `InstructionRenderer`, `RecoveryStrategy`, `JsonDecoder`, and more | [Extension points](extension-points.md) |
+| Operations | result metadata, `Observer`, tracing | [Observability](observability.md) |
+| Testing | `ScriptedChatModel`, contract suites | [Testing](testing.md) |
 
 ![Request lifecycle](../assets/diagrams/request-lifecycle.png){ .diagram width="653" }
 

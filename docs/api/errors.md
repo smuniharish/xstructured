@@ -10,6 +10,8 @@
 
 ::: xstructured.LimitExceededError
 
+::: xstructured.JsonSafetyError
+
 ::: xstructured.RecoveryError
 
 ::: xstructured.RepairError

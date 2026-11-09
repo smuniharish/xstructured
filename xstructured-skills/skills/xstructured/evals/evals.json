@@ -1,0 +1,57 @@
+{
+  "skill_name": "xstructured",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our support bot in app.py parses the ticket priority and team out of the model reply with a regex, and it breaks all the time. Use xstructured so we get the customer-facing answer and a validated ticket from the same reply. Make it async and add tests that run without an API key.",
+      "expected_output": "app.py defines a Pydantic Ticket model with a Literal priority, wraps the chat model once with with_xstructured_output, and an async answer function awaits ainvoke and returns result.content and result.structured. A test file uses ScriptedChatModel for a valid reply and an invalid one.",
+      "files": ["files/support_bot/app.py"],
+      "assertions": [
+        "The regular expression and the PRIORITY/TEAM prompt suffix are removed",
+        "A Pydantic model validates the ticket, with priority restricted to low, high, or critical",
+        "with_xstructured_output wraps the model once, outside the request function",
+        "The answer function is async and awaits ainvoke, returning result.content and result.structured",
+        "Tests use xstructured.testing.ScriptedChatModel and need no network or API key",
+        "A test checks that an invalid reply raises ParseError (or a subclass)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We build a LangChain agent with create_agent and two tools. We want the agent to keep chatting normally but also hand back a validated Booking object at the end, and if the model gets the JSON wrong once it should get one chance to fix it.",
+      "expected_output": "Adds XStructuredMiddleware(Booking, repair_config=RepairConfig(max_attempts=1)) from xstructured.agents to the agent's middleware, keeps the tools, and reads state['structured_response'].structured after awaiting agent.ainvoke.",
+      "files": [],
+      "assertions": [
+        "XStructuredMiddleware is imported from xstructured.agents and passed in middleware=[...]",
+        "The existing tools stay on the agent unchanged",
+        "Repair is bounded with RepairConfig(max_attempts=1) and no separate repair model is passed to the middleware",
+        "The validated value is read from state[\"structured_response\"].structured",
+        "Installation uses the xstructured[agents] extra"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Our FastAPI endpoint streams an LLM answer over server-sent events. Product wants the prose to appear token by token and then a status card rendered from typed fields once they're ready, all from one model call.",
+      "expected_output": "Wraps the model with with_xstructured_output and iterates wrapper.astream(...), forwarding TEXT_DELTA text as it arrives and sending the card on STRUCTURED_END (or RESULT), without a second model call.",
+      "files": [],
+      "assertions": [
+        "The endpoint iterates astream() on the xstructured wrapper itself, not on a composed chain",
+        "TEXT_DELTA events are forwarded as prose as they arrive",
+        "The card is built from event.structured on STRUCTURED_END or from event.result on RESULT",
+        "Only one model call is made per request",
+        "Repair is not relied on while streaming events"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Since we started passing a ChatPromptTemplate into our xstructured wrapper we get `TypeError: Cannot add xstructured instructions to input of type dict`. How do we fix it properly?",
+      "expected_output": "Explains that the template's input dict cannot carry instructions, and either ends the chain with XStructuredOutputParser and puts get_format_instructions() in the template, or wraps the prompt | model chain with inject_instructions=False and includes wrapper.instructions in the template.",
+      "files": [],
+      "assertions": [
+        "Identifies that the wrapper received the template's input dict rather than messages",
+        "Proposes XStructuredOutputParser with get_format_instructions() in the template, or inject_instructions=False with wrapper.instructions in the prompt",
+        "Does not suggest catching and ignoring the TypeError",
+        "Keeps schema validation unchanged"
+      ]
+    }
+  ]
+}

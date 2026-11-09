@@ -19,6 +19,8 @@ The result fields `recovered`, `repaired`, `repair_attempts`, and `schema_name` 
 how the value was obtained.
 
 ```python
+import asyncio
+
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
@@ -36,7 +38,7 @@ message = AIMessage(
     usage_metadata={"input_tokens": 20, "output_tokens": 9, "total_tokens": 29},
 )
 wrapper = with_xstructured_output(RunnableLambda(lambda _: message), Answer)
-result = wrapper.invoke("q")
+result = asyncio.run(wrapper.ainvoke("q"))
 
 assert result.metadata["schema_fingerprint"] == fingerprint_schema(Answer)
 assert result.metadata["envelope_count"] == 1
@@ -69,8 +71,10 @@ def answer(_: str) -> AIMessage:
 
 
 recorder = Recorder()
-with_xstructured_output(RunnableLambda(answer), Answer).invoke(
-    "q", config={"callbacks": [recorder], "run_name": "extract_answer"}
+asyncio.run(
+    with_xstructured_output(RunnableLambda(answer), Answer).ainvoke(
+        "q", config={"callbacks": [recorder], "run_name": "extract_answer"}
+    )
 )
 
 assert recorder.runs == [("extract_answer", True), ("answer", False)]
@@ -78,3 +82,65 @@ assert recorder.runs == [("extract_answer", True), ("answer", False)]
 
 `astream_events()` includes the wrapper's protocol events as `on_chain_stream` events and
 the model's tokens as `on_chat_model_stream` events, so one event stream can drive a UI.
+
+## Observers
+
+An `Observer` receives one `Observation` per call of the wrapper or the agent
+middleware, and the observation is finished exactly once with `succeed` or
+`fail`. Subclass `Observer` to send metrics to any backend; the attributes are
+sizes, counts, flags, and names, never prompt or response text.
+
+```python
+from collections.abc import Mapping
+
+from xstructured import AttributeValue, Observation, Observer
+
+
+class Metrics(Observation):
+    def __init__(self, log: list[str], operation: str) -> None:
+        self.log = log
+        self.operation = operation
+
+    def succeed(self, attributes: Mapping[str, AttributeValue]) -> None:
+        chars = attributes["xstructured.response_chars"]
+        self.log.append(f"{self.operation} ok {chars}")
+
+    def fail(self, error: BaseException) -> None:
+        self.log.append(f"{self.operation} failed {type(error).__name__}")
+
+
+class MetricsObserver(Observer):
+    def __init__(self) -> None:
+        self.log: list[str] = []
+
+    def start(
+        self, operation: str, attributes: Mapping[str, AttributeValue]
+    ) -> Observation:
+        return Metrics(self.log, operation)
+
+
+observer = MetricsObserver()
+observed = with_xstructured_output(
+    RunnableLambda(answer), Answer, observer=observer
+)
+asyncio.run(observed.ainvoke("q"))
+assert observer.log == [f"invoke ok {len(message.content)}"]
+```
+
+| Attribute | Set at | Meaning |
+| --- | --- | --- |
+| `xstructured.name` | start | The wrapper's run name or the middleware name. |
+| `xstructured.schema_fingerprint` | start | The schema fingerprint. |
+| `xstructured.multiple`, `xstructured.multiple_envelopes` | start | The value shape. |
+| `xstructured.recovered`, `xstructured.repaired` | success | How the value was obtained. |
+| `xstructured.repair_attempts` | success | Repair calls made. |
+| `xstructured.envelope_count` | success | Envelopes in the response. |
+| `xstructured.parse_duration` | success | Seconds spent parsing. |
+| `xstructured.response_chars`, `xstructured.content_chars` | success | Sizes of the response and the prose. |
+| `xstructured.schema_name` | success | The matched name, for named schemas. |
+
+The operation is `"invoke"` (for `invoke`, `ainvoke`, and batches), `"stream"`,
+`"transform"`, or `"agent"` for the middleware. A stream that the caller stops early, or a cancelled task, finishes the
+observation with `fail`. `OpenTelemetryObserver` records every call as a span;
+see [OpenTelemetry](../integrations/opentelemetry.md). `ObserverContract` in
+`xstructured.testing` checks a custom observer; see [Testing](testing.md).

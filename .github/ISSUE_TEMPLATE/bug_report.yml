@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a problem with xstructured
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out as much
+        of this form as you can; it helps us reproduce and fix the issue
+        faster.
+
+  - type: input
+    id: version
+    attributes:
+      label: xstructured version
+      description: Output of `python -c "import xstructured; print(xstructured.__version__)"`.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      description: Output of `python --version`.
+      placeholder: "3.14.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: >
+        A minimal, self-contained code sample (ideally a runnable script)
+        that reproduces the issue. Say how xstructured is attached
+        (`with_xstructured_output`, `XStructuredMiddleware`, or
+        `XStructuredOutputParser`) and which extension points you customize.
+        `xstructured.testing.ScriptedChatModel` replays a response without a
+        provider, and `exc.raw_output` holds the response that failed.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Relevant log output / traceback
+      description: Paste any error output. This will be rendered as a code block automatically.
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might be relevant (OS, model provider, LangChain, LangGraph, or Deep Agents versions, etc.).

@@ -13,8 +13,9 @@ A support assistant explains a decision to the user while your code acts on a va
 `Decision`. Native structured output returns only the structured value.
 
 **You wrap something that is not a bare chat model.**
-Existing chains, custom Runnables, and agent graphs gain a typed result at their boundary
-without being rebuilt.
+Existing chains and custom Runnables gain a typed result at their boundary without being
+rebuilt, and `create_agent` agents get one through `XStructuredMiddleware` while they
+keep calling tools.
 
 **You stream to a user interface.**
 Text appears as it is generated, and the structured payload is validated the moment it
@@ -39,7 +40,7 @@ produced a cached or logged value.
 
 - the provider's native structured output (or `with_structured_output`) already returns
   exactly the value you need, and you do not need prose alongside it;
-- you build an agent and only need its final structured answer:
+- you build an agent and only need its final structured answer, without prose:
   `create_agent(response_format=...)` handles that natively;
 - constrained decoding, where the provider guarantees schema-valid output, is a hard
   requirement.
@@ -55,6 +56,8 @@ produced a cached or logged value.
 | Rejects duplicate keys and `NaN` | provider-dependent | — | ✓ |
 | Size and nesting limits | — | — | ✓ |
 | Bounded, opt-in repair | — | — | ✓ |
+| Replaceable recovery, decoding, and instructions | — | — | ✓ |
+| OpenTelemetry spans | — | — | ✓ |
 | Schema fingerprints | — | — | ✓ |
 
 The [benchmarks](../benchmarks.md) measure the parser rows of this table.

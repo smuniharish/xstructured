@@ -5,6 +5,7 @@ Run it with ``uv run python examples/incident_analysis.py``.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 
 from langchain_core.messages import HumanMessage
@@ -39,15 +40,16 @@ class IncidentAnalysis(BaseModel):
     follow_up_actions: list[str] = Field(min_length=1)
 
 
-def main() -> None:
+async def main() -> None:
     report = (
         "At 09:12 UTC checkout errors rose to 35% after release 2026.09.18. "
         "Rolling back reduced errors to 1% within five minutes. "
         "Explain your assessment in one sentence before the structured block."
     )
-    result = with_xstructured_output(
-        chat_model(SCRIPTED_REPLY), IncidentAnalysis
-    ).invoke([HumanMessage(report)])
+    async with chat_model(SCRIPTED_REPLY) as model:
+        result = await with_xstructured_output(model, IncidentAnalysis).ainvoke(
+            [HumanMessage(report)]
+        )
 
     banner("Incident analysis")
     analysis = result.structured
@@ -60,4 +62,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

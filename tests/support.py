@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from typing import Any, override
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables import Runnable, RunnableConfig, RunnableLambda
 from pydantic import BaseModel
+
+from xstructured import AttributeValue, Observation, Observer
 
 
 class Answer(BaseModel):
@@ -126,3 +128,40 @@ def chunked(text: str, widths: Sequence[int]) -> list[str]:
     if offset < len(text):
         chunks.append(text[offset:])
     return chunks
+
+
+class RecordingObservation(Observation):
+    def __init__(self, operation: str, attributes: Mapping[str, Any]) -> None:
+        self.operation = operation
+        self.attributes = dict(attributes)
+        self.outcome: Any = None
+
+    @override
+    def succeed(self, attributes: Mapping[str, AttributeValue]) -> None:
+        assert self.outcome is None
+        self.outcome = dict(attributes)
+
+    @override
+    def fail(self, error: BaseException) -> None:
+        assert self.outcome is None
+        self.outcome = error
+
+
+class RecordingObserver(Observer):
+    """An observer that keeps every observation for assertions."""
+
+    def __init__(self) -> None:
+        self.observations: list[RecordingObservation] = []
+
+    @override
+    def start(
+        self, operation: str, attributes: Mapping[str, AttributeValue]
+    ) -> Observation:
+        observation = RecordingObservation(operation, attributes)
+        self.observations.append(observation)
+        return observation
+
+    @property
+    def only(self) -> RecordingObservation:
+        (observation,) = self.observations
+        return observation

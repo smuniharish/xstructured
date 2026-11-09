@@ -11,7 +11,7 @@ import pytest
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 EXPECTED = {
-    "single_agent_extraction.py": "ContactInfo(name='Priya Shah', email='priya.shah@example.com'",
+    "single_agent_extraction.py": "Tool calls: 1",
     "multi_agent_pipeline.py": "ClaimReview(approved=True",
     "deep_agent.py": "Topic: Retrieval-augmented generation",
     "langgraph_workflow.py": "Action: Paged the payments on-call engineer",
@@ -20,6 +20,9 @@ EXPECTED = {
     "streaming_ui_events.py": "[card ready after",
     "multiple_payloads_repair.py": "Repaired: True (attempts: 1)",
     "named_envelopes.py": "recommendation: Recommendation(owner='platform'",
+    "output_parser_chain.py": "Invoice: Invoice(vendor='Northwind Traders'",
+    "customization.py": "House rule sent: True",
+    "opentelemetry_tracing.py": "span 'xstructured invoke': status=OK",
 }
 
 

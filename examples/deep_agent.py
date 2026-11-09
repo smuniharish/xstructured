@@ -1,26 +1,21 @@
 """Validate the final answer of a Deep Agents research agent.
 
 ``create_deep_agent`` builds a planning agent with sub-agents and a virtual
-filesystem on top of LangGraph. Like ``create_agent``, it exchanges
-``{"messages": [...]}`` state, so the same adapter pattern applies.
+filesystem on top of LangChain's agent runtime, so ``XStructuredMiddleware``
+plugs into it exactly as it does into ``create_agent``.
 
 Run it with ``uv run python examples/deep_agent.py``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
-from _shared import banner, chat_model, require_packages
-
-require_packages("deepagents")
+import asyncio
 
 from deepagents import create_deep_agent
-from langchain_core.messages import BaseMessage, HumanMessage
-from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field
 
-from xstructured import with_xstructured_output
+from _shared import banner, chat_model
+from xstructured.agents import XStructuredMiddleware
 
 SCRIPTED_REPLY = (
     "Here is a concise summary of retrieval-augmented generation (RAG).\n"
@@ -37,6 +32,9 @@ SCRIPTED_REPLY = (
 )
 
 
+QUESTION = "Summarize retrieval-augmented generation in three key points."
+
+
 class ResearchSummary(BaseModel):
     """A short research summary."""
 
@@ -45,28 +43,17 @@ class ResearchSummary(BaseModel):
     open_questions: list[str] = Field(default_factory=list)
 
 
-def main() -> None:
-    deep_agent = create_deep_agent(
-        model=chat_model(SCRIPTED_REPLY),
-        system_prompt="You are a careful research assistant.",
-    )
-
-    def run_agent(messages: Sequence[BaseMessage]) -> BaseMessage:
-        return deep_agent.invoke({"messages": list(messages)})["messages"][-1]
-
-    summarizer = with_xstructured_output(
-        RunnableLambda(run_agent), ResearchSummary
-    )
-    result = summarizer.invoke(
-        [
-            HumanMessage(
-                "Summarize retrieval-augmented generation in three key points."
-            )
-        ]
-    )
+async def main() -> None:
+    async with chat_model(SCRIPTED_REPLY) as model:
+        agent = create_deep_agent(
+            model=model,
+            system_prompt="You are a careful research assistant.",
+            middleware=[XStructuredMiddleware(ResearchSummary)],
+        )
+        state = await agent.ainvoke({"messages": [("human", QUESTION)]})
 
     banner("Deep agent research summary")
-    summary = result.structured
+    summary = state["structured_response"].structured
     print(f"Topic: {summary.topic}")
     for point in summary.key_points:
         print(f"- {point}")
@@ -74,4 +61,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -17,10 +17,10 @@ Mechanisms compared:
 
 | Mechanism | Correct | Correct % | Median (&micro;s) | Mean (&micro;s) |
 | --- | ---: | ---: | ---: | ---: |
-| Plain JSON | 5000/11000 | 45.45 | 3.50 | 3.76 |
-| LangChain JSON | 5000/11000 | 45.45 | 284.00 | 437.43 |
-| LangChain Pydantic | 5000/11000 | 45.45 | 249.65 | 362.31 |
-| xstructured | 11000/11000 | 100.00 | 21.00 | 28.45 |
+| Plain JSON | 5000/11000 | 45.45 | 2.00 | 2.06 |
+| LangChain JSON | 5000/11000 | 45.45 | 18.20 | 27.45 |
+| LangChain Pydantic | 5000/11000 | 45.45 | 17.70 | 26.66 |
+| xstructured | 11000/11000 | 100.00 | 12.90 | 17.38 |
 
 Inputs that must parse:
 
@@ -43,8 +43,8 @@ Inputs that must be rejected:
 | `truncated-json` | :white_check_mark: | :x: | :x: | :white_check_mark: |
 | `multiple-bare-payloads` | :white_check_mark: | :x: | :x: | :white_check_mark: |
 
-Measured with 1000 iterations per case on Python 3.14.7 (Windows AMD64), xstructured
-0.1.0, langchain-core 1.6.6, and pydantic 2.13.5. Correctness is deterministic; latency
+Measured with 1000 iterations per case on Python 3.12.16 (Windows AMD64), xstructured
+1.0.0, langchain-core 1.7.6, and pydantic 2.14.3. Correctness is deterministic; latency
 varies between runs and machines, while the ordering stays the same.
 
 Accepting ambiguous or truncated JSON counts as **incorrect**, even when a parser returns a

@@ -1,8 +1,8 @@
 # Multi-agent pipeline
 
 An extractor agent turns an expense report into an `ExpenseClaim`, and a reviewer agent
-checks the claim against a policy and returns a `ClaimReview`. Each agent is wrapped
-independently, so the hand-off between them is a validated object rather than free text.
+checks the claim against a policy and returns a `ClaimReview`. Each agent has its own
+`XStructuredMiddleware`, so the hand-off between them is a validated object rather than free text.
 
 ```python title="examples/multi_agent_pipeline.py"
 --8<-- "examples/multi_agent_pipeline.py"

@@ -87,7 +87,7 @@ def test_unsupported_inputs_fail_before_calling_the_model() -> None:
     wrapper = with_xstructured_output(RunnableLambda(recorder), Answer)
 
     with pytest.raises(TypeError, match="inject_instructions=False"):
-        wrapper.invoke({"messages": [HumanMessage("hi")]})
+        wrapper.invoke({"question": "hi"})
     assert recorder.inputs == []
 
 
@@ -238,14 +238,16 @@ def test_an_explicitly_required_envelope_is_kept() -> None:
 
 
 def test_repair_config_requires_a_repair_runnable() -> None:
-    with pytest.raises(ValueError, match="repair_config requires"):
+    with pytest.raises(ValueError, match="require a repair Runnable"):
         with_xstructured_output(
             reply(ENVELOPED), Answer, repair_config=RepairConfig()
         )
 
 
 def test_unsupported_outputs_are_reported() -> None:
-    with pytest.raises(TypeError, match="must return str or BaseMessage"):
+    with pytest.raises(TypeError, match="must return str, BaseMessage"):
+        with_xstructured_output(reply(42), Answer).invoke("q")
+    with pytest.raises(TypeError, match="contain no AI message"):
         with_xstructured_output(reply({"messages": []}), Answer).invoke("q")
 
 

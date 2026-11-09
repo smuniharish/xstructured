@@ -219,7 +219,7 @@ def render_markdown(
 ) -> str:
     """Render rows, an optional per-case matrix, and the environment as Markdown.
 
-    The output is ASCII: emoji are shortcodes, which MkDocs and GitHub render.
+    The output is ASCII: emoji are shortcodes, which Zensical and GitHub render.
     """
     lines = [
         "| Mechanism | Correct | Correct % | Median (&micro;s) | Mean (&micro;s) |",

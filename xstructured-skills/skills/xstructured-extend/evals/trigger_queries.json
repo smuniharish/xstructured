@@ -1,0 +1,25 @@
+{
+  "skill_name": "xstructured-extend",
+  "queries": [
+    {"query": "write a JsonDecoder subclass for xstructured that accepts single-quoted python dicts", "should_trigger": true, "split": "train"},
+    {"query": "send xstructured call counts and parse durations to prometheus with a custom Observer", "should_trigger": true, "split": "train"},
+    {"query": "my xstructured RecoveryStrategy fails RecoveryStrategyContract test_first_candidate_is_the_text_as_given", "should_trigger": true, "split": "train"},
+    {"query": "render the xstructured schema instructions in German with a custom InstructionRenderer", "should_trigger": true, "split": "train"},
+    {"query": "our runnable returns a dataclass, write an OutputTextExtractor so xstructured can read its text", "should_trigger": true, "split": "train"},
+    {"query": "run check_extension.py against our decoder factory and fix the broken promise", "should_trigger": true, "split": "train"},
+    {"query": "customize the repair prompt xstructured sends to the model with a RepairPromptBuilder subclass", "should_trigger": true, "split": "validation"},
+    {"query": "our model puts the JSON on the last line; add a recovery strategy that tries it first", "should_trigger": true, "split": "validation"},
+    {"query": "write an InstructionInjector that puts the xstructured instructions into our request dict", "should_trigger": true, "split": "validation"},
+    {"query": "test our datadog Observer for xstructured with the ObserverContract suite", "should_trigger": true, "split": "validation"},
+    {"query": "add xstructured to my langchain chatbot so it returns prose and a validated ticket", "should_trigger": false, "split": "train"},
+    {"query": "enable OpenTelemetry spans for xstructured with the built-in observer", "should_trigger": false, "split": "train"},
+    {"query": "raise the xstructured max_payload_chars limit and turn on repair with one attempt", "should_trigger": false, "split": "train"},
+    {"query": "write a custom JSON encoder for datetime objects in python", "should_trigger": false, "split": "train"},
+    {"query": "implement a LangChain BaseOutputParser for CSV output", "should_trigger": false, "split": "train"},
+    {"query": "set up prometheus metrics for my FastAPI app's request latency", "should_trigger": false, "split": "train"},
+    {"query": "add XStructuredMiddleware to my deep agent so it ends with a summary object", "should_trigger": false, "split": "validation"},
+    {"query": "stream xstructured events to a websocket client", "should_trigger": false, "split": "validation"},
+    {"query": "write a pytest plugin that retries flaky tests", "should_trigger": false, "split": "validation"},
+    {"query": "make pydantic accept extra fields in a model", "should_trigger": false, "split": "validation"}
+  ]
+}

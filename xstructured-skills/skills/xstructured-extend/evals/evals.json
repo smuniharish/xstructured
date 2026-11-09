@@ -1,0 +1,45 @@
+{
+  "skill_name": "xstructured-extend",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our in-house model (see app.py) writes Python dicts inside the xstructured envelope, with single quotes and True/False, so every reply fails with RecoveryError. Make xstructured accept these replies without weakening its JSON safety checks, and prove it with tests.",
+      "expected_output": "A JsonDecoder subclass that tries StrictJsonDecoder first, re-raises JsonSafetyError, falls back to ast.literal_eval for other ValueErrors, rejects values without a JSON form with ValueError, and is passed as decoder=. Tests subclass JsonDecoderContract and run the wrapper on the three replies with ScriptedChatModel.",
+      "files": ["files/literal_model/app.py"],
+      "assertions": [
+        "A class subclasses xstructured.JsonDecoder and is passed with decoder= to with_xstructured_output",
+        "The decoder delegates to StrictJsonDecoder first and re-raises JsonSafetyError instead of falling back",
+        "Text it rejects raises ValueError (not another exception type)",
+        "A test class subclasses xstructured.testing.JsonDecoderContract and implements make_decoder",
+        "An end-to-end test parses all three replies from app.py into Decision values",
+        "eval() is not used"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We want Prometheus metrics for every xstructured call in our service: calls by outcome, parse duration, and how often repair kicks in. Agents use the middleware, chat endpoints use with_xstructured_output.",
+      "expected_output": "An Observer subclass whose start returns a per-call Observation that records counters and a histogram in succeed and fail, counts cancellations separately, never raises, and is passed as observer= to both the wrapper and XStructuredMiddleware. Tests subclass ObserverContract.",
+      "files": [],
+      "assertions": [
+        "A class subclasses xstructured.Observer and its start returns an xstructured.Observation subclass",
+        "succeed reads xstructured.parse_duration and xstructured.repaired from the attributes",
+        "fail distinguishes cancellations (asyncio.CancelledError or GeneratorExit) from errors",
+        "Metric labels use the operation and outcome, never prompt or response text",
+        "The same observer is passed with observer= to with_xstructured_output and XStructuredMiddleware",
+        "A test subclasses xstructured.testing.ObserverContract"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Our custom RecoveryStrategy fails test_candidates_are_distinct_non_empty_substrings from xstructured's RecoveryStrategyContract. It replaces single quotes with double quotes before yielding. Fix it so the contract passes.",
+      "expected_output": "Explains that candidates must be substrings of the text and must never rewrite JSON, removes the quote rewriting, deduplicates and drops empty candidates, and points to a JsonDecoder subclass if non-standard quoting must be accepted.",
+      "files": [],
+      "assertions": [
+        "Identifies that rewriting quotes produces candidates that are not substrings of the text",
+        "The fixed strategy yields the stripped text first and only distinct, non-empty substrings",
+        "Suggests a JsonDecoder subclass rather than a strategy for accepting non-standard syntax",
+        "Does not skip or weaken the contract test"
+      ]
+    }
+  ]
+}

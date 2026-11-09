@@ -2,7 +2,22 @@ from __future__ import annotations
 
 import pytest
 
-from xstructured.parser.recovery import recovery_candidates
+from xstructured.contracts import RecoveryStrategy
+from xstructured.parser.recovery import ConservativeRecovery
+
+
+def recovery_candidates(
+    text: str,
+    *,
+    strip_markdown_fences: bool = True,
+    strip_surrounding_text: bool = True,
+) -> list[str]:
+    return list(
+        ConservativeRecovery(
+            strip_markdown_fences=strip_markdown_fences,
+            strip_surrounding_text=strip_surrounding_text,
+        ).candidates(text)
+    )
 
 
 def test_candidates_follow_the_documented_order() -> None:
@@ -50,3 +65,21 @@ def test_recovery_strategies_can_be_disabled() -> None:
 
 def test_brackets_in_the_wrong_order_produce_no_candidate() -> None:
     assert list(recovery_candidates("} then {")) == ["} then {"]
+
+
+def test_strategy_is_a_recovery_strategy_with_a_readable_repr() -> None:
+    strategy = ConservativeRecovery(strip_markdown_fences=False)
+
+    assert isinstance(strategy, RecoveryStrategy)
+    assert repr(strategy) == (
+        "ConservativeRecovery(strip_markdown_fences=False, "
+        "strip_surrounding_text=True)"
+    )
+
+
+def test_fences_can_be_left_untouched() -> None:
+    text = "```json\n[1]\n```"
+
+    assert recovery_candidates(
+        text, strip_markdown_fences=False, strip_surrounding_text=False
+    ) == [text]

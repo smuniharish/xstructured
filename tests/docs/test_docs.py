@@ -24,7 +24,7 @@ DOCUMENTS = sorted(
         ROOT / "CONTRIBUTING.md",
         ROOT / "SECURITY.md",
         *ROOT.joinpath("docs").rglob("*.md"),
-        *ROOT.joinpath("skills").rglob("*.md"),
+        *ROOT.joinpath("xstructured-skills").rglob("*.md"),
         *ROOT.joinpath("examples").rglob("*.md"),
     ]
 )

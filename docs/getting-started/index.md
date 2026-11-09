@@ -1,6 +1,6 @@
 # Getting started
 
-`xstructured` adds a response contract to a LangChain Runnable: the model writes its
+`xstructured` adds a response contract to a LangChain Runnable, agent, or chain: the model writes its
 answer in natural language and places a JSON payload inside an *envelope*;
 `xstructured` extracts the payload, validates it with Pydantic, and returns both.
 
@@ -8,19 +8,20 @@ answer in natural language and places a JSON payload inside an *envelope*;
 
 -   :material-download: __[Installation](installation.md)__
 
-    Requirements and optional dependencies.
+    Requirements and optional extras.
 
 -   :material-rocket-launch-outline: __[Quickstart](quickstart.md)__
 
-    Chat models, chains, agents, streaming, and parsing text you already have.
+    Chat models, agents, output parsers, streaming, and parsing text you already have.
 
 </div>
 
 ## How it works
 
-1. **Instructions.** The wrapper adds instructions that describe your schema and the
-   envelope format to the model input.
-2. **Generation.** Your Runnable runs unchanged and returns text or a message.
+1. **Instructions.** The wrapper, middleware, or parser adds instructions that describe
+   your schema and the envelope format to the model input.
+2. **Generation.** Your model, chain, or agent runs unchanged and returns text or a
+   message.
 3. **Extraction.** The envelope is located, even when the closing tag appears inside a
    JSON string or arrives split across stream chunks.
 4. **Validation.** The payload is decoded as strict JSON and validated by Pydantic. If it

@@ -42,8 +42,9 @@ class RecoveryConfig(BaseModel):
 class RepairConfig(BaseModel):
     """Bounds for the opt-in, LLM-assisted repair fallback.
 
-    Repair only runs when a repair Runnable is passed to `with_xstructured_output`; this
-    configuration is ignored otherwise.
+    Repair runs only when a repair Runnable is passed to `with_xstructured_output`, or
+    when this configuration is passed to `XStructuredMiddleware`, which asks the agent's
+    own model for the correction.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

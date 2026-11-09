@@ -10,9 +10,14 @@
         - envelope
         - instructions
         - schema_fingerprint
+        - injector
+        - extractor
+        - observer
         - invoke
         - ainvoke
         - stream
         - astream
         - transform
         - atransform
+
+::: xstructured.CONTEXT_KEY

@@ -9,6 +9,8 @@ Run it with ``uv run python examples/rag_citations.py``.
 
 from __future__ import annotations
 
+import asyncio
+
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
@@ -49,22 +51,21 @@ class CitedAnswer(BaseModel):
     citations: list[Citation] = Field(min_length=1)
 
 
-def main() -> None:
+async def main() -> None:
     context = "\n".join(
         f"[{source}] {text}" for source, text in DOCUMENTS.items()
     )
     question = "What is required before a production rollout?"
-    result = with_xstructured_output(
-        chat_model(SCRIPTED_REPLY), CitedAnswer
-    ).invoke(
-        [
-            HumanMessage(
-                "Answer using only these documents. Cite every claim with its "
-                f"source_id and a verbatim quote.\n\n{context}\n\n"
-                f"Question: {question}"
-            )
-        ]
-    )
+    async with chat_model(SCRIPTED_REPLY) as model:
+        result = await with_xstructured_output(model, CitedAnswer).ainvoke(
+            [
+                HumanMessage(
+                    "Answer using only these documents. Cite every claim "
+                    "with its source_id and a verbatim quote.\n\n"
+                    f"{context}\n\nQuestion: {question}"
+                )
+            ]
+        )
 
     banner("RAG answer with citations")
     print(f"Answer: {result.structured.answer}")
@@ -74,4 +75,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

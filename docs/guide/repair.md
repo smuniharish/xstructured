@@ -16,13 +16,17 @@ Repair is strictly opt-in and bounded:
 - Each attempt's output is parsed by the **same** parser, with the same schema and limits.
   Repair can replace an invalid response; it can never relax what counts as valid.
 
-In the examples on this page, `RunnableLambda`s with canned replies stand in for models.
+In the examples on this page, `ScriptedChatModel`s from
+[`xstructured.testing`](testing.md) stand in for the models.
 
 ```python
+import asyncio
+
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
 
 from xstructured import RepairConfig, with_xstructured_output
+from xstructured.testing import ScriptedChatModel
 
 
 class Invoice(BaseModel):
@@ -43,12 +47,12 @@ def repair_model(prompt: str) -> str:
 
 
 wrapper = with_xstructured_output(
-    RunnableLambda(lambda _: invalid),
+    ScriptedChatModel.of(invalid),
     Invoice,
     repair=RunnableLambda(repair_model),
     repair_config=RepairConfig(max_attempts=2),
 )
-result = wrapper.invoke("Extract the invoice.")
+result = asyncio.run(wrapper.ainvoke("Extract the invoice."))
 
 assert result.structured == Invoice(number="INV-7", total=12.5)
 assert result.repaired and result.repair_attempts == 1
@@ -84,13 +88,13 @@ attempt; the last attempt's parse error is its `__cause__`.
 from xstructured import RepairError
 
 stubborn = with_xstructured_output(
-    RunnableLambda(lambda _: invalid),
+    ScriptedChatModel.of(invalid),
     Invoice,
-    repair=RunnableLambda(lambda _: "still not valid"),
+    repair=ScriptedChatModel.of("still not valid", "still not valid"),
     repair_config=RepairConfig(max_attempts=2),
 )
 try:
-    stubborn.invoke("Extract the invoice.")
+    asyncio.run(stubborn.ainvoke("Extract the invoice."))
 except RepairError as error:
     assert error.attempts == 2
     assert len(error.failures) == 2
@@ -99,10 +103,12 @@ except RepairError as error:
 ## Choosing a repair model
 
 Any Runnable that accepts a string works: often the same chat model, sometimes a cheaper
-or more capable one. Disable repair per environment with `RepairConfig(enabled=False)`
+or more capable one. Pass a [`RepairPromptBuilder`](extension-points.md#repair-prompts)
+as `repair_prompt` to change what it receives. Disable repair per environment with `RepairConfig(enabled=False)`
 without changing the wiring.
 
-Repair runs for `invoke`, `ainvoke`, `batch`, `abatch`, and inside composed streaming
-chains. It is not attempted while streaming events directly, because the events have
+Repair runs for `ainvoke`, `abatch`, their sync counterparts, and inside composed
+streaming chains. With [`XStructuredMiddleware`](../integrations/agents.md), passing
+`repair_config` makes the agent's own model repair its final answer. It is not attempted while streaming events directly, because the events have
 already been delivered. Repair calls appear as child runs tagged `xstructured:repair` in
 your traces.

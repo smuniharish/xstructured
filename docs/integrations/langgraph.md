@@ -1,6 +1,7 @@
 # LangGraph
 
-Inside a LangGraph node, call the wrapper and store the validated value in graph state.
+Install the `langgraph` extra (`pip install "xstructured[langgraph]"`). Inside an
+async LangGraph node, await the wrapper and store the validated value in graph state.
 Conditional edges can then route on typed fields instead of parsing text.
 
 ```python
@@ -29,8 +30,9 @@ class State(BaseModel):
 triage = with_xstructured_output(init_chat_model("openai:gpt-5-mini"), Triage)
 
 
-def triage_request(state: State) -> dict[str, Triage]:
-    return {"triage": triage.invoke([HumanMessage(state.request)]).structured}
+async def triage_request(state: State) -> dict[str, Triage]:
+    result = await triage.ainvoke([HumanMessage(state.request)])
+    return {"triage": result.structured}
 
 
 def route(state: State) -> Literal["page_on_call", "open_ticket"]:
@@ -59,9 +61,14 @@ graph.add_conditional_edges("triage", route)
 graph.add_edge("page_on_call", END)
 graph.add_edge("open_ticket", END)
 workflow = graph.compile()
+
+# final = await workflow.ainvoke({"request": "EU checkout is down."})
 ```
 
 Because the wrapper is a traced Runnable, it appears as a child run of the node in
 LangSmith, and LangGraph's `stream_mode="messages"` still streams the model's tokens.
+For agent nodes built with `create_agent`, add
+[`XStructuredMiddleware`](agents.md) and read `structured_response` from the
+agent's final state.
 
 The complete script is in the [LangGraph workflow example](../examples/langgraph-workflow.md).

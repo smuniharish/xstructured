@@ -10,8 +10,9 @@ hide:
 
 <p class="xs-tagline">
 Validated Pydantic data <strong>and</strong> natural-language text from one LLM response.
-Wrap any LangChain v1 Runnable, chat model, or agent; get typed results that survive
-Markdown fences, chatty prose, and token-by-token streaming.
+Wrap any LangChain v1 Runnable or chat model, add middleware to any agent, or end a
+chain with an output parser; get typed results that survive Markdown fences, chatty
+prose, and token-by-token streaming.
 </p>
 
 [Get started](getting-started/index.md){ .md-button .md-button--primary }
@@ -49,8 +50,8 @@ Markdown fences, chatty prose, and token-by-token streaming.
 
     ---
 
-    A standard Runnable: `invoke`, `batch`, `stream`, async variants, tracing,
-    retries, fallbacks, and composition all behave natively.
+    Async-first Runnables, `create_agent` middleware, and an LCEL output parser:
+    `ainvoke`, `abatch`, `astream`, tracing, retries, and fallbacks behave natively.
 
 -   :material-lock-outline:{ .lg .middle } __Bounded by design__
 
@@ -65,6 +66,13 @@ Markdown fences, chatty prose, and token-by-token streaming.
 
     When recovery is not enough, an opt-in repair Runnable gets a fixed number of
     attempts, and its output is held to the same schema.
+
+-   :material-tune-variant:{ .lg .middle } __Extensible and observable__
+
+    ---
+
+    Every behavior is an abstract base class you can replace, Pydantic options pass
+    straight through, and OpenTelemetry spans cover every call.
 
 </div>
 
@@ -83,6 +91,8 @@ Markdown fences, chatty prose, and token-by-token streaming.
     ```
 
 ```python
+import asyncio
+
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
 
@@ -94,14 +104,17 @@ class Contact(BaseModel):
     email: str
 
 
-model = init_chat_model("openai:gpt-5-mini")
-extractor = with_xstructured_output(model, Contact)
-result = extractor.invoke(
-    "Please add Priya Shah (priya.shah@example.com) to the review."
-)
+async def main() -> None:
+    model = init_chat_model("openai:gpt-5-mini")
+    extractor = with_xstructured_output(model, Contact)
+    result = await extractor.ainvoke(
+        "Please add Priya Shah (priya.shah@example.com) to the review."
+    )
+    print(result.structured)  # name='Priya Shah' email='priya.shah@...'
+    print(result.content)  # "I've noted Priya Shah's details."
 
-result.structured  # Contact(name='Priya Shah', email='priya.shah@example.com')
-result.content  # "I've noted Priya Shah's details." (the model's own words)
+
+asyncio.run(main())
 ```
 
 ![How a request flows through xstructured](assets/diagrams/architecture-overview.png){ .diagram width="596" }
@@ -116,15 +129,15 @@ result.content  # "I've noted Priya Shah's details." (the model's own words)
 
 -   :material-book-open-variant: __[User guide](guide/index.md)__
 
-    Envelopes, recovery, schemas, streaming, repair, limits, and errors.
+    Envelopes, recovery, schemas, streaming, repair, extension points, and testing.
 
 -   :material-connection: __[Integrations](integrations/index.md)__
 
-    LangChain Runnables, `create_agent`, Deep Agents, and LangGraph.
+    LangChain Runnables, agent middleware, Deep Agents, LangGraph, and OpenTelemetry.
 
 -   :material-flask-outline: __[Examples](examples/index.md)__
 
-    Nine runnable applications, from agent extraction to streaming UIs.
+    Twelve runnable applications, from agent extraction to OpenTelemetry tracing.
 
 -   :material-speedometer: __[Benchmarks](benchmarks.md)__
 

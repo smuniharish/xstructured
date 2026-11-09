@@ -2,7 +2,8 @@
 
 # Configuration and limits
 
-All parsing behavior is controlled by three immutable Pydantic models.
+Parsing limits, recovery, and repair are controlled by three immutable Pydantic models;
+`SchemaOptions` passes Pydantic's own options through.
 
 ## ParserConfig
 
@@ -77,8 +78,64 @@ except ParseError as error:
 | `enabled` | `True` | Allow the configured repair Runnable to run. |
 | `max_attempts` | 1 (at most 5) | Repair calls per response. |
 
-`RepairConfig` only matters when a `repair` Runnable is passed; see
-[Bounded repair](repair.md).
+For `with_xstructured_output`, `RepairConfig` applies when a `repair` Runnable is passed.
+For `XStructuredMiddleware`, passing `repair_config` turns repair on with the agent's own
+model. See [Bounded repair](repair.md).
+
+## Pydantic options
+
+`SchemaOptions` forwards options to Pydantic's `TypeAdapter`, so a schema behaves inside
+xstructured exactly as it does with Pydantic directly. Every entry point takes it as
+`schema_options=`.
+
+| Field | Pydantic purpose |
+| --- | --- |
+| `strict` | Validate in strict mode. |
+| `extra` | Handle unknown fields: `"ignore"`, `"allow"`, or `"forbid"`. |
+| `context` | Default validation context for validators (`info.context`). |
+| `by_alias`, `by_name` | Accept aliases and field names during validation. |
+| `config` | A `ConfigDict` for annotation targets such as `list[Item]` or a `TypedDict`. |
+| `json_schema_by_alias`, `ref_template`, `union_format` | JSON Schema generation. |
+| `schema_generator`, `json_schema_mode` | The `GenerateJsonSchema` class and the schema mode. |
+
+```python
+from pydantic import ValidationInfo, field_validator
+
+from xstructured import SchemaOptions
+
+
+class Order(BaseModel):
+    sku: str
+    quantity: int
+
+    @field_validator("quantity")
+    @classmethod
+    def within_limit(cls, value: int, info: ValidationInfo) -> int:
+        if value > (info.context or {}).get("max_quantity", 100):
+            raise ValueError("quantity is over the limit")
+        return value
+
+
+orders = StructuredParser(
+    Order,
+    schema_options=SchemaOptions(
+        strict=True, extra="forbid", context={"max_quantity": 10}
+    ),
+)
+
+assert orders.parse('{"sku": "A-1", "quantity": 3}').value.quantity == 3
+try:
+    orders.parse('{"sku": "A-1", "quantity": 30}')
+except ParseError as error:
+    assert "over the limit" in str(error)
+try:
+    orders.parse('{"sku": "A-1", "quantity": 3, "note": "rush"}')
+except ParseError as error:
+    assert "note" in str(error)
+```
+
+A context passed for one call replaces the default: `parser.parse(text, context=...)`,
+or `CONTEXT_KEY` in the run config for the wrapper, output parser, and middleware.
 
 ## Choosing limits
 

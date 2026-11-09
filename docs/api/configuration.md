@@ -5,3 +5,5 @@
 ::: xstructured.RecoveryConfig
 
 ::: xstructured.RepairConfig
+
+::: xstructured.SchemaOptions

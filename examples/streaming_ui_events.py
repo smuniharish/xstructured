@@ -9,6 +9,8 @@ Run it with ``uv run python examples/streaming_ui_events.py``.
 
 from __future__ import annotations
 
+import asyncio
+
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
@@ -30,41 +32,39 @@ class StatusUpdate(BaseModel):
     next_step: str
 
 
-def main() -> None:
-    events = with_xstructured_output(
-        chat_model(SCRIPTED_REPLY), StatusUpdate
-    ).stream(
-        [
-            HumanMessage(
-                "Deployment 2026.10.04-1 finished at 14:02 UTC. All 12 health "
-                "checks pass in eu-west and us-east, and error rates are at "
-                "baseline. Tell the user the status in one sentence, then give "
-                "the status card."
-            )
-        ]
-    )
-
+async def main() -> None:
     banner("Streaming UI events")
     deltas = 0
-    for event in events:
-        match event.kind:
-            case StreamEventKind.TEXT_DELTA:
-                print(event.text or "", end="", flush=True)
-            case StreamEventKind.STRUCTURED_DELTA:
-                deltas += 1
-            case StreamEventKind.STRUCTURED_END:
-                print(
-                    f"\n[card ready after {deltas} structured deltas] "
-                    f"{event.structured!r}"
+    async with chat_model(SCRIPTED_REPLY) as model:
+        events = with_xstructured_output(model, StatusUpdate).astream(
+            [
+                HumanMessage(
+                    "Deployment 2026.10.04-1 finished at 14:02 UTC. All 12 "
+                    "health checks pass in eu-west and us-east, and error "
+                    "rates are at baseline. Tell the user the status in one "
+                    "sentence, then give the status card."
                 )
-            case StreamEventKind.RESULT if event.result is not None:
-                print(
-                    f"\n[result #{event.sequence}] "
-                    f"recovered={event.result.recovered}"
-                )
-            case _:
-                pass
+            ]
+        )
+        async for event in events:
+            match event.kind:
+                case StreamEventKind.TEXT_DELTA:
+                    print(event.text or "", end="", flush=True)
+                case StreamEventKind.STRUCTURED_DELTA:
+                    deltas += 1
+                case StreamEventKind.STRUCTURED_END:
+                    print(
+                        f"\n[card ready after {deltas} structured deltas] "
+                        f"{event.structured!r}"
+                    )
+                case StreamEventKind.RESULT if event.result is not None:
+                    print(
+                        f"\n[result #{event.sequence}] "
+                        f"recovered={event.result.recovered}"
+                    )
+                case _:
+                    pass
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

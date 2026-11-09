@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Iterator
+import sys
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from time import perf_counter
-from types import MappingProxyType
 from typing import Any, Literal, cast, overload
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForChainRun,
     CallbackManagerForChainRun,
 )
-from langchain_core.messages import BaseMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.config import patch_config
 from pydantic import TypeAdapter
 
+from xstructured.contracts import (
+    AttributeValue,
+    InstructionInjector,
+    InstructionRenderer,
+    JsonDecoder,
+    Observation,
+    Observer,
+    OutputTextExtractor,
+    RecoveryStrategy,
+    RepairPromptBuilder,
+    require_instance,
+)
 from xstructured.core.config import ParserConfig, RepairConfig
 from xstructured.core.errors import LimitExceededError, ParseError
 from xstructured.core.result import ParseResult, XStructuredResult
@@ -25,11 +36,23 @@ from xstructured.schema.fingerprint import fingerprint_schema
 from xstructured.schema.instructions import schema_instructions
 from xstructured.schema.introspection import SchemaInfo, SchemaTarget
 from xstructured.schema.named import NamedSchemas, NamedSchemaTargets
+from xstructured.schema.options import SchemaOptions
 from xstructured.streaming.decoder import StreamDecoder
 from xstructured.streaming.events import StreamEvent, StreamEventKind
 
-from ._messages import ChunkAccumulator, inject_instructions, output_text
-from ._repair import Repairer
+from ._messages import (
+    ChunkAccumulator,
+    MessageInstructionInjector,
+    MessageTextExtractor,
+)
+from ._repair import DefaultRepairPrompt, Repairer
+from ._shared import (
+    build_result,
+    observe,
+    remove_spans,
+    result_attributes,
+    validation_context,
+)
 
 __all__ = ["XStructuredRunnable", "with_xstructured_output"]
 
@@ -45,15 +68,23 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
     validates the payload. It is traced as its own run, with the wrapped Runnable (and
     the repair Runnable, when used) as child runs.
 
-    - `invoke`, `ainvoke`, `batch` and `abatch` return `XStructuredResult` values.
-    - `stream` and `astream` yield ordered `StreamEvent` values that end with one
+    - `ainvoke`, `abatch`, `invoke` and `batch` return `XStructuredResult` values.
+    - `astream` and `stream` yield ordered `StreamEvent` values that end with one
       `RESULT` event.
-    - Inside a composed chain (`transform`/`atransform`) the wrapper behaves like any
+    - Inside a composed chain (`atransform`/`transform`) the wrapper behaves like any
       Runnable and emits its final `XStructuredResult`, so downstream steps receive the
-      same value as with `invoke`.
+      same value as with `ainvoke`.
+
+    A LangGraph graph, including a LangChain or Deep Agents agent, can be wrapped
+    directly: its state input gets the instructions, its last AI message is parsed,
+    and it streams in ``messages`` mode unless *stream_mode* is passed.
+
+    Set ``config["configurable"]["xstructured_context"]`` to pass a Pydantic
+    validation context for one call.
 
     Args:
-        runnable: A Runnable whose output is a string or a `BaseMessage`.
+        runnable: A Runnable whose output is a string, a `BaseMessage`, or a state
+            mapping with messages.
         schema: A schema target, a `SchemaInfo`, or named schemas.
         envelope: Envelope delimiters. Defaults to ``<xstructured>`` / ``</xstructured>``.
         parser_config: Limits and recovery settings. An envelope is always required.
@@ -63,9 +94,22 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
             `instructions` in your own prompt.
         repair: Optional Runnable asked to correct responses that fail validation.
         repair_config: Bounds for *repair*.
+        schema_options: Pydantic configuration and JSON Schema generation options.
+        renderer: Renders the instructions (default `DefaultInstructionRenderer`).
+        injector: Adds the instructions to the input (default
+            `MessageInstructionInjector`).
+        extractor: Reads response text from outputs and stream chunks (default
+            `MessageTextExtractor`).
+        recovery: Chooses the substrings tried as JSON (default
+            `ConservativeRecovery` built from *parser_config*).
+        decoder: Decodes each candidate (default `StrictJsonDecoder`).
+        repair_prompt: Builds the input of *repair* (default `DefaultRepairPrompt`).
+        observer: Receives one observation per call, for telemetry.
+        name: The run name shown in traces.
 
     Raises:
-        ValueError: If *repair_config* is given without *repair*, or options conflict.
+        ValueError: If repair options are given without *repair*, or options conflict.
+        TypeError: If an extension point does not subclass its base class.
         SchemaError: If the schema is invalid.
         EnvelopeError: If the envelope cannot express the requested mode.
     """
@@ -82,9 +126,22 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         inject_instructions: bool = True,
         repair: Runnable[Any, Any] | None = None,
         repair_config: RepairConfig | None = None,
+        schema_options: SchemaOptions | None = None,
+        renderer: InstructionRenderer | None = None,
+        injector: InstructionInjector | None = None,
+        extractor: OutputTextExtractor | None = None,
+        recovery: RecoveryStrategy | None = None,
+        decoder: JsonDecoder | None = None,
+        repair_prompt: RepairPromptBuilder | None = None,
+        observer: Observer | None = None,
+        name: str | None = None,
     ) -> None:
-        if repair_config is not None and repair is None:
-            raise ValueError("repair_config requires a repair Runnable")
+        if repair is None and (
+            repair_config is not None or repair_prompt is not None
+        ):
+            raise ValueError(
+                "repair_config and repair_prompt require a repair Runnable"
+            )
         envelope = envelope or EnvelopeSpec()
         config = parser_config or ParserConfig()
         if not config.require_envelope:
@@ -95,7 +152,11 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
             envelope=envelope,
             multiple=multiple,
             multiple_envelopes=multiple_envelopes,
+            schema_options=schema_options,
+            recovery=recovery,
+            decoder=decoder,
         )
+        self.name = name
         self._runnable = runnable
         self._parser = parser
         self._envelope = envelope
@@ -104,9 +165,31 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
             envelope=envelope,
             multiple=multiple,
             multiple_envelopes=multiple_envelopes,
+            renderer=renderer,
         )
         self._schema_fingerprint = fingerprint_schema(parser.schema)
         self._inject_instructions = inject_instructions
+        self._injector = (
+            MessageInstructionInjector()
+            if injector is None
+            else require_instance(injector, InstructionInjector, "injector")
+        )
+        self._extractor = (
+            MessageTextExtractor()
+            if extractor is None
+            else require_instance(extractor, OutputTextExtractor, "extractor")
+        )
+        self._observer = (
+            None
+            if observer is None
+            else require_instance(observer, Observer, "observer")
+        )
+        self._attributes: Mapping[str, AttributeValue] = {
+            "xstructured.name": self.get_name(),
+            "xstructured.schema_fingerprint": self._schema_fingerprint,
+            "xstructured.multiple": multiple,
+            "xstructured.multiple_envelopes": multiple_envelopes,
+        }
         self._repairer: Repairer[T] | None = (
             None
             if repair is None
@@ -115,6 +198,14 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
                 repair,
                 repair_config or RepairConfig(),
                 self._instructions,
+                prompt=(
+                    DefaultRepairPrompt()
+                    if repair_prompt is None
+                    else require_instance(
+                        repair_prompt, RepairPromptBuilder, "repair_prompt"
+                    )
+                ),
+                extractor=self._extractor,
             )
         )
 
@@ -147,6 +238,21 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         return self._schema_fingerprint
 
     @property
+    def injector(self) -> InstructionInjector:
+        """The instruction injector."""
+        return self._injector
+
+    @property
+    def extractor(self) -> OutputTextExtractor:
+        """The output text extractor."""
+        return self._extractor
+
+    @property
+    def observer(self) -> Observer | None:
+        """The telemetry observer, if any."""
+        return self._observer
+
+    @property
     def InputType(self) -> type[InputT]:  # noqa: N802 - LangChain API name
         """The wrapped Runnable's input type."""
         return self._runnable.InputType
@@ -156,7 +262,7 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         """`XStructuredResult`."""
         return cast("type[XStructuredResult[T]]", XStructuredResult)
 
-    def invoke(
+    async def ainvoke(
         self,
         input: InputT,  # noqa: A002 - LangChain API name
         config: RunnableConfig | None = None,
@@ -169,44 +275,23 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
             ParseError: If the response does not validate (including `RecoveryError`,
                 `LimitExceededError` and `RepairError`).
         """
-        return self._call_with_config(self._invoke, input, config, **kwargs)
+        return await self._acall_with_config(
+            self._ainvoke, input, config, **kwargs
+        )
 
-    async def ainvoke(
+    def invoke(
         self,
         input: InputT,  # noqa: A002 - LangChain API name
         config: RunnableConfig | None = None,
         **kwargs: Any,
     ) -> XStructuredResult[T]:
-        """Asynchronously run the wrapped Runnable and return the validated result.
+        """Synchronous `ainvoke`, for code that cannot await.
 
         Raises:
             TypeError: If the input cannot carry instructions.
             ParseError: If the response does not validate.
         """
-        return await self._acall_with_config(
-            self._ainvoke, input, config, **kwargs
-        )
-
-    def stream(  # pyrefly: ignore[bad-override]
-        self,
-        input: InputT,  # noqa: A002 - LangChain API name
-        config: RunnableConfig | None = None,
-        **kwargs: Any,
-    ) -> Iterator[StreamEvent[T]]:
-        """Stream ordered protocol events, ending with one `RESULT` event.
-
-        Raises:
-            TypeError: If the input cannot carry instructions.
-            ValueError: If the wrapper expects named envelopes.
-            ParseError: If the response does not validate.
-        """
-        transformer = cast(
-            "Callable[..., Iterator[XStructuredResult[T]]]", self._stream_events
-        )
-        events = self._transform_stream_with_config(
-            iter([input]), transformer, config, **kwargs
-        )
-        yield from cast("Iterator[StreamEvent[T]]", events)
+        return self._call_with_config(self._invoke, input, config, **kwargs)
 
     async def astream(  # pyrefly: ignore[bad-override]
         self,
@@ -214,7 +299,7 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         config: RunnableConfig | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[StreamEvent[T]]:
-        """Asynchronously stream ordered protocol events, ending with one `RESULT` event.
+        """Stream ordered protocol events, ending with one `RESULT` event.
 
         Raises:
             TypeError: If the input cannot carry instructions.
@@ -231,16 +316,26 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         async for event in cast("AsyncIterator[StreamEvent[T]]", events):
             yield event
 
-    def transform(
+    def stream(  # pyrefly: ignore[bad-override]
         self,
-        input: Iterator[InputT],  # noqa: A002 - LangChain API name
+        input: InputT,  # noqa: A002 - LangChain API name
         config: RunnableConfig | None = None,
         **kwargs: Any,
-    ) -> Iterator[XStructuredResult[T]]:
-        """Consume streamed input inside a composed chain and emit the final result."""
-        yield from self._transform_stream_with_config(
-            input, self._transform_results, config, **kwargs
+    ) -> Iterator[StreamEvent[T]]:
+        """Synchronous `astream`, for code that cannot await.
+
+        Raises:
+            TypeError: If the input cannot carry instructions.
+            ValueError: If the wrapper expects named envelopes.
+            ParseError: If the response does not validate.
+        """
+        transformer = cast(
+            "Callable[..., Iterator[XStructuredResult[T]]]", self._stream_events
         )
+        events = self._transform_stream_with_config(
+            iter([input]), transformer, config, **kwargs
+        )
+        yield from cast("Iterator[StreamEvent[T]]", events)
 
     async def atransform(
         self,
@@ -248,21 +343,22 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         config: RunnableConfig | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[XStructuredResult[T]]:
-        """Asynchronously consume streamed input and emit the final result."""
+        """Consume streamed input inside a composed chain and emit the final result."""
         async for result in self._atransform_stream_with_config(
             input, self._atransform_results, config, **kwargs
         ):
             yield result
 
-    def _invoke(
+    def transform(
         self,
-        input_: InputT,
-        run_manager: CallbackManagerForChainRun,
-        config: RunnableConfig,
+        input: Iterator[InputT],  # noqa: A002 - LangChain API name
+        config: RunnableConfig | None = None,
         **kwargs: Any,
-    ) -> XStructuredResult[T]:
-        raw = self._runnable.invoke(self._prepare(input_), config, **kwargs)
-        return self._finish(raw, output_text(raw), run_manager, config)
+    ) -> Iterator[XStructuredResult[T]]:
+        """Synchronous `atransform`, for code that cannot await."""
+        yield from self._transform_stream_with_config(
+            input, self._transform_results, config, **kwargs
+        )
 
     async def _ainvoke(
         self,
@@ -271,32 +367,38 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         config: RunnableConfig,
         **kwargs: Any,
     ) -> XStructuredResult[T]:
-        raw = await self._runnable.ainvoke(
-            self._prepare(input_), config, **kwargs
-        )
-        return await self._afinish(raw, output_text(raw), run_manager, config)
+        observation = self._observe("invoke")
+        try:
+            raw = await self._runnable.ainvoke(
+                self._prepare(input_), config, **kwargs
+            )
+            result = await self._afinish(
+                raw, self._extractor.text(raw), run_manager, config
+            )
+        except BaseException as exc:
+            observation.fail(exc)
+            raise
+        observation.succeed(result_attributes(result))
+        return result
 
-    def _stream_events(
+    def _invoke(
         self,
-        inputs: Iterator[InputT],
+        input_: InputT,
+        run_manager: CallbackManagerForChainRun,
         config: RunnableConfig,
         **kwargs: Any,
-    ) -> Iterator[StreamEvent[T]]:
-        decoder = StreamDecoder(self._parser)
-        chunks = ChunkAccumulator()
-        elapsed = 0.0
-        for chunk in self._runnable.stream(
-            self._prepare(next(inputs)), config, **kwargs
-        ):
-            text = chunks.add(chunk)
-            started = perf_counter()
-            events = decoder.feed(text)
-            elapsed += perf_counter() - started
-            yield from events
-        started = perf_counter()
-        decoder.finalize()
-        elapsed += perf_counter() - started
-        yield self._result_event(decoder, chunks, elapsed)
+    ) -> XStructuredResult[T]:
+        observation = self._observe("invoke")
+        try:
+            raw = self._runnable.invoke(self._prepare(input_), config, **kwargs)
+            result = self._finish(
+                raw, self._extractor.text(raw), run_manager, config
+            )
+        except BaseException as exc:
+            observation.fail(exc)
+            raise
+        observation.succeed(result_attributes(result))
+        return result
 
     async def _astream_events(
         self,
@@ -304,38 +406,61 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         config: RunnableConfig,
         **kwargs: Any,
     ) -> AsyncIterator[StreamEvent[T]]:
-        decoder = StreamDecoder(self._parser)
-        chunks = ChunkAccumulator()
-        elapsed = 0.0
-        prepared = self._prepare(await anext(inputs))
-        async for chunk in self._runnable.astream(prepared, config, **kwargs):
-            text = chunks.add(chunk)
+        observation = self._observe("stream")
+        try:
+            decoder = self._stream_decoder(config)
+            chunks = ChunkAccumulator(self._extractor)
+            elapsed = 0.0
+            prepared = self._prepare(await anext(inputs))
+            async for chunk in self._runnable.astream(
+                prepared, config, **self._stream_kwargs(kwargs)
+            ):
+                text = chunks.add(chunk)
+                started = perf_counter()
+                events = decoder.feed(text)
+                elapsed += perf_counter() - started
+                for event in events:
+                    yield event
             started = perf_counter()
-            events = decoder.feed(text)
+            decoder.finalize()
             elapsed += perf_counter() - started
-            for event in events:
-                yield event
-        started = perf_counter()
-        decoder.finalize()
-        elapsed += perf_counter() - started
-        yield self._result_event(decoder, chunks, elapsed)
+            event = self._result_event(decoder, chunks, elapsed)
+        except BaseException as exc:
+            observation.fail(exc)
+            raise
+        observation.succeed(result_attributes(cast("Any", event.result)))
+        yield event
 
-    def _transform_results(
+    def _stream_events(
         self,
         inputs: Iterator[InputT],
-        run_manager: CallbackManagerForChainRun,
         config: RunnableConfig,
         **kwargs: Any,
-    ) -> Iterator[XStructuredResult[T]]:
-        input_ = _fold(inputs)
-        if input_ is _MISSING:
-            return
-        chunks = ChunkAccumulator()
-        for chunk in self._runnable.stream(
-            self._prepare(input_), config, **kwargs
-        ):
-            chunks.add(chunk)
-        yield self._finish(chunks.output(), chunks.text, run_manager, config)
+    ) -> Iterator[StreamEvent[T]]:
+        observation = self._observe("stream")
+        try:
+            decoder = self._stream_decoder(config)
+            chunks = ChunkAccumulator(self._extractor)
+            elapsed = 0.0
+            for chunk in self._runnable.stream(
+                self._prepare(next(inputs)),
+                config,
+                **self._stream_kwargs(kwargs),
+            ):
+                text = chunks.add(chunk)
+                started = perf_counter()
+                events = decoder.feed(text)
+                elapsed += perf_counter() - started
+                yield from events
+            started = perf_counter()
+            decoder.finalize()
+            elapsed += perf_counter() - started
+            event = self._result_event(decoder, chunks, elapsed)
+        except BaseException as exc:
+            observation.fail(exc)
+            raise
+        observation.succeed(result_attributes(cast("Any", event.result)))
+        yield event
 
     async def _atransform_results(
         self,
@@ -347,47 +472,63 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         input_ = await _afold(inputs)
         if input_ is _MISSING:
             return
-        chunks = ChunkAccumulator()
-        async for chunk in self._runnable.astream(
-            self._prepare(input_), config, **kwargs
-        ):
-            chunks.add(chunk)
-        yield await self._afinish(
-            chunks.output(), chunks.text, run_manager, config
-        )
+        observation = self._observe("transform")
+        try:
+            chunks = ChunkAccumulator(self._extractor)
+            async for chunk in self._runnable.astream(
+                self._prepare(input_), config, **self._stream_kwargs(kwargs)
+            ):
+                chunks.add(chunk)
+            result = await self._afinish(
+                chunks.output(), chunks.text, run_manager, config
+            )
+        except BaseException as exc:
+            observation.fail(exc)
+            raise
+        observation.succeed(result_attributes(result))
+        yield result
+
+    def _transform_results(
+        self,
+        inputs: Iterator[InputT],
+        run_manager: CallbackManagerForChainRun,
+        config: RunnableConfig,
+        **kwargs: Any,
+    ) -> Iterator[XStructuredResult[T]]:
+        input_ = _fold(inputs)
+        if input_ is _MISSING:
+            return
+        observation = self._observe("transform")
+        try:
+            chunks = ChunkAccumulator(self._extractor)
+            for chunk in self._runnable.stream(
+                self._prepare(input_), config, **self._stream_kwargs(kwargs)
+            ):
+                chunks.add(chunk)
+            result = self._finish(
+                chunks.output(), chunks.text, run_manager, config
+            )
+        except BaseException as exc:
+            observation.fail(exc)
+            raise
+        observation.succeed(result_attributes(result))
+        yield result
+
+    def _observe(self, operation: str) -> Observation:
+        return observe(self._observer, operation, self._attributes)
+
+    def _stream_decoder(self, config: RunnableConfig) -> StreamDecoder[T]:
+        return StreamDecoder(self._parser, context=validation_context(config))
+
+    def _stream_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        if "stream_mode" in kwargs or not _is_graph(self._runnable):
+            return kwargs
+        return {**kwargs, "stream_mode": "messages"}
 
     def _prepare(self, value: Any) -> Any:
         if not self._inject_instructions:
             return value
-        return inject_instructions(value, self._instructions)
-
-    def _finish(
-        self,
-        raw: Any,
-        raw_text: str,
-        run_manager: CallbackManagerForChainRun,
-        config: RunnableConfig,
-    ) -> XStructuredResult[T]:
-        started = perf_counter()
-        try:
-            parsed = self._parser.parse(raw_text)
-        except ParseError as error:
-            repairer = self._repairable(error)
-            repair_config = patch_config(
-                config, callbacks=run_manager.get_child(_REPAIR_TAG)
-            )
-            parsed = repairer.repair(raw_text, error, repair_config)
-            content = self._parser.strip_envelopes(raw_text)
-        else:
-            content = _remove_spans(raw_text, parsed.envelope_spans)
-        return self._result(
-            raw=raw,
-            raw_text=raw_text,
-            content=content,
-            parsed=parsed,
-            envelope_count=len(parsed.envelope_spans),
-            parse_duration=perf_counter() - started,
-        )
+        return self._injector.inject(value, self._instructions)
 
     async def _afinish(
         self,
@@ -397,25 +538,45 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
         config: RunnableConfig,
     ) -> XStructuredResult[T]:
         started = perf_counter()
+        context = validation_context(config)
         try:
-            parsed = self._parser.parse(raw_text)
+            parsed = self._parser.parse(raw_text, context=context)
         except ParseError as error:
             repairer = self._repairable(error)
             repair_config = patch_config(
                 config, callbacks=run_manager.get_child(_REPAIR_TAG)
             )
-            parsed = await repairer.arepair(raw_text, error, repair_config)
+            parsed = await repairer.arepair(
+                raw_text, error, repair_config, context=context
+            )
             content = self._parser.strip_envelopes(raw_text)
         else:
-            content = _remove_spans(raw_text, parsed.envelope_spans)
-        return self._result(
-            raw=raw,
-            raw_text=raw_text,
-            content=content,
-            parsed=parsed,
-            envelope_count=len(parsed.envelope_spans),
-            parse_duration=perf_counter() - started,
-        )
+            content = remove_spans(raw_text, parsed.envelope_spans)
+        return self._result(raw, raw_text, content, parsed, started)
+
+    def _finish(
+        self,
+        raw: Any,
+        raw_text: str,
+        run_manager: CallbackManagerForChainRun,
+        config: RunnableConfig,
+    ) -> XStructuredResult[T]:
+        started = perf_counter()
+        context = validation_context(config)
+        try:
+            parsed = self._parser.parse(raw_text, context=context)
+        except ParseError as error:
+            repairer = self._repairable(error)
+            repair_config = patch_config(
+                config, callbacks=run_manager.get_child(_REPAIR_TAG)
+            )
+            parsed = repairer.repair(
+                raw_text, error, repair_config, context=context
+            )
+            content = self._parser.strip_envelopes(raw_text)
+        else:
+            content = remove_spans(raw_text, parsed.envelope_spans)
+        return self._result(raw, raw_text, content, parsed, started)
 
     def _repairable(self, error: ParseError) -> Repairer[T]:
         repairer = self._repairer
@@ -427,13 +588,32 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
             raise error
         return repairer
 
+    def _result(
+        self,
+        raw: Any,
+        raw_text: str,
+        content: str,
+        parsed: ParseResult[T],
+        started: float,
+    ) -> XStructuredResult[T]:
+        return build_result(
+            fingerprint=self._schema_fingerprint,
+            raw=raw,
+            raw_text=raw_text,
+            content=content,
+            parsed=parsed,
+            envelope_count=len(parsed.envelope_spans),
+            parse_duration=perf_counter() - started,
+        )
+
     def _result_event(
         self,
         decoder: StreamDecoder[T],
         chunks: ChunkAccumulator,
         elapsed: float,
     ) -> StreamEvent[T]:
-        result = self._result(
+        result = build_result(
+            fingerprint=self._schema_fingerprint,
             raw=chunks.output(),
             raw_text=chunks.text,
             content=decoder.text,
@@ -445,40 +625,6 @@ class XStructuredRunnable[InputT, T](Runnable[InputT, XStructuredResult[T]]):
             kind=StreamEventKind.RESULT,
             sequence=decoder.next_sequence,
             result=result,
-        )
-
-    def _result(
-        self,
-        *,
-        raw: Any,
-        raw_text: str,
-        content: str,
-        parsed: ParseResult[T],
-        envelope_count: int,
-        parse_duration: float,
-    ) -> XStructuredResult[T]:
-        metadata: dict[str, Any] = {
-            "schema_fingerprint": self._schema_fingerprint,
-            "envelope_count": envelope_count,
-            "parse_duration": parse_duration,
-        }
-        if isinstance(raw, BaseMessage):
-            metadata["message_id"] = raw.id
-            metadata["response_metadata"] = dict(raw.response_metadata)
-            usage = getattr(raw, "usage_metadata", None)
-            if usage:
-                metadata["usage_metadata"] = dict(usage)
-        return XStructuredResult(
-            content=content,
-            structured=parsed.value,
-            raw=raw,
-            raw_text=raw_text,
-            json_text=parsed.json_text,
-            recovered=parsed.recovered,
-            schema_name=parsed.schema_name,
-            repaired=parsed.repaired,
-            repair_attempts=parsed.repair_attempts,
-            metadata=MappingProxyType(metadata),
         )
 
 
@@ -494,6 +640,15 @@ def with_xstructured_output[InputT, S](
     inject_instructions: bool = True,
     repair: Runnable[Any, Any] | None = None,
     repair_config: RepairConfig | None = None,
+    schema_options: SchemaOptions | None = None,
+    renderer: InstructionRenderer | None = None,
+    injector: InstructionInjector | None = None,
+    extractor: OutputTextExtractor | None = None,
+    recovery: RecoveryStrategy | None = None,
+    decoder: JsonDecoder | None = None,
+    repair_prompt: RepairPromptBuilder | None = None,
+    observer: Observer | None = None,
+    name: str | None = None,
 ) -> XStructuredRunnable[InputT, S]: ...
 
 
@@ -509,6 +664,15 @@ def with_xstructured_output[InputT, S](
     inject_instructions: bool = True,
     repair: Runnable[Any, Any] | None = None,
     repair_config: RepairConfig | None = None,
+    schema_options: SchemaOptions | None = None,
+    renderer: InstructionRenderer | None = None,
+    injector: InstructionInjector | None = None,
+    extractor: OutputTextExtractor | None = None,
+    recovery: RecoveryStrategy | None = None,
+    decoder: JsonDecoder | None = None,
+    repair_prompt: RepairPromptBuilder | None = None,
+    observer: Observer | None = None,
+    name: str | None = None,
 ) -> XStructuredRunnable[InputT, list[S]]: ...
 
 
@@ -524,6 +688,15 @@ def with_xstructured_output[InputT, S](
     inject_instructions: bool = True,
     repair: Runnable[Any, Any] | None = None,
     repair_config: RepairConfig | None = None,
+    schema_options: SchemaOptions | None = None,
+    renderer: InstructionRenderer | None = None,
+    injector: InstructionInjector | None = None,
+    extractor: OutputTextExtractor | None = None,
+    recovery: RecoveryStrategy | None = None,
+    decoder: JsonDecoder | None = None,
+    repair_prompt: RepairPromptBuilder | None = None,
+    observer: Observer | None = None,
+    name: str | None = None,
 ) -> XStructuredRunnable[InputT, S]: ...
 
 
@@ -539,6 +712,15 @@ def with_xstructured_output[InputT, S](
     inject_instructions: bool = True,
     repair: Runnable[Any, Any] | None = None,
     repair_config: RepairConfig | None = None,
+    schema_options: SchemaOptions | None = None,
+    renderer: InstructionRenderer | None = None,
+    injector: InstructionInjector | None = None,
+    extractor: OutputTextExtractor | None = None,
+    recovery: RecoveryStrategy | None = None,
+    decoder: JsonDecoder | None = None,
+    repair_prompt: RepairPromptBuilder | None = None,
+    observer: Observer | None = None,
+    name: str | None = None,
 ) -> XStructuredRunnable[InputT, list[S]]: ...
 
 
@@ -554,6 +736,15 @@ def with_xstructured_output[InputT](
     inject_instructions: bool = True,
     repair: Runnable[Any, Any] | None = None,
     repair_config: RepairConfig | None = None,
+    schema_options: SchemaOptions | None = None,
+    renderer: InstructionRenderer | None = None,
+    injector: InstructionInjector | None = None,
+    extractor: OutputTextExtractor | None = None,
+    recovery: RecoveryStrategy | None = None,
+    decoder: JsonDecoder | None = None,
+    repair_prompt: RepairPromptBuilder | None = None,
+    observer: Observer | None = None,
+    name: str | None = None,
 ) -> XStructuredRunnable[InputT, dict[str, Any]]: ...
 
 
@@ -569,6 +760,15 @@ def with_xstructured_output[InputT](
     inject_instructions: bool = True,
     repair: Runnable[Any, Any] | None = None,
     repair_config: RepairConfig | None = None,
+    schema_options: SchemaOptions | None = None,
+    renderer: InstructionRenderer | None = None,
+    injector: InstructionInjector | None = None,
+    extractor: OutputTextExtractor | None = None,
+    recovery: RecoveryStrategy | None = None,
+    decoder: JsonDecoder | None = None,
+    repair_prompt: RepairPromptBuilder | None = None,
+    observer: Observer | None = None,
+    name: str | None = None,
 ) -> XStructuredRunnable[InputT, Any]: ...
 
 
@@ -583,12 +783,21 @@ def with_xstructured_output[InputT](
     inject_instructions: bool = True,
     repair: Runnable[Any, Any] | None = None,
     repair_config: RepairConfig | None = None,
+    schema_options: SchemaOptions | None = None,
+    renderer: InstructionRenderer | None = None,
+    injector: InstructionInjector | None = None,
+    extractor: OutputTextExtractor | None = None,
+    recovery: RecoveryStrategy | None = None,
+    decoder: JsonDecoder | None = None,
+    repair_prompt: RepairPromptBuilder | None = None,
+    observer: Observer | None = None,
+    name: str | None = None,
 ) -> XStructuredRunnable[InputT, Any]:
     """Wrap a Runnable so its output is validated against a Pydantic schema.
 
     Args:
-        runnable: A chat model, chain, or any Runnable whose output is a string or a
-            `BaseMessage`.
+        runnable: A chat model, chain, LangGraph graph, agent, or any Runnable whose
+            output is a string, a `BaseMessage`, or a state mapping with messages.
         schema: A model class, `TypeAdapter`, or annotation; or named schemas as a
             mapping of names to targets.
         envelope: Envelope delimiters. Defaults to ``<xstructured>`` / ``</xstructured>``.
@@ -601,17 +810,29 @@ def with_xstructured_output[InputT](
         repair: Optional Runnable asked to correct responses that fail validation, after
             conservative recovery. It is never called unless supplied.
         repair_config: Bounds for *repair* (default: one attempt).
+        schema_options: Pydantic configuration and JSON Schema generation options.
+        renderer: An `InstructionRenderer` for the instructions.
+        injector: An `InstructionInjector` that adds instructions to the input.
+        extractor: An `OutputTextExtractor` that reads outputs and stream chunks.
+        recovery: A `RecoveryStrategy` choosing the substrings tried as JSON.
+        decoder: A `JsonDecoder` for each candidate.
+        repair_prompt: A `RepairPromptBuilder` for the input of *repair*.
+        observer: An `Observer` receiving one observation per call.
+        name: The run name shown in traces.
 
     Returns:
         An `XStructuredRunnable`.
 
     Raises:
         ValueError: If options conflict.
+        TypeError: If an extension point does not subclass its base class.
         SchemaError: If the schema is invalid.
         EnvelopeError: If the envelope cannot express the requested mode.
 
     Example:
         ```python
+        import asyncio
+
         from langchain.chat_models import init_chat_model
         from pydantic import BaseModel
         from xstructured import with_xstructured_output
@@ -622,10 +843,16 @@ def with_xstructured_output[InputT](
             email: str
 
 
-        model = init_chat_model("openai:gpt-5-mini")
-        extractor = with_xstructured_output(model, Contact)
-        result = extractor.invoke("Reach Priya Shah at priya@example.com.")
-        print(result.structured, result.content)
+        async def main() -> None:
+            model = init_chat_model("openai:gpt-5-mini")
+            extractor = with_xstructured_output(model, Contact)
+            result = await extractor.ainvoke(
+                "Reach Priya Shah at priya@example.com."
+            )
+            print(result.structured, result.content)
+
+
+        asyncio.run(main())
         ```
     """
     return XStructuredRunnable(
@@ -638,7 +865,21 @@ def with_xstructured_output[InputT](
         inject_instructions=inject_instructions,
         repair=repair,
         repair_config=repair_config,
+        schema_options=schema_options,
+        renderer=renderer,
+        injector=injector,
+        extractor=extractor,
+        recovery=recovery,
+        decoder=decoder,
+        repair_prompt=repair_prompt,
+        observer=observer,
+        name=name,
     )
+
+
+def _is_graph(runnable: Runnable[Any, Any]) -> bool:
+    pregel = sys.modules.get("langgraph.pregel")
+    return pregel is not None and isinstance(runnable, pregel.Pregel)
 
 
 def _fold(chunks: Iterator[Any]) -> Any:
@@ -664,13 +905,3 @@ def _add(left: Any, right: Any) -> Any:
 
 async def _once[V](value: V) -> AsyncIterator[V]:
     yield value
-
-
-def _remove_spans(text: str, spans: tuple[tuple[int, int], ...]) -> str:
-    parts: list[str] = []
-    position = 0
-    for start, end in spans:
-        parts.append(text[position:start])
-        position = end
-    parts.append(text[position:])
-    return "".join(parts)

@@ -16,6 +16,7 @@ from xstructured.core.errors import SchemaError
 from xstructured.envelope.spec import NAME_PATTERN
 
 from .introspection import SchemaInfo, SchemaTarget, inspect_schema
+from .options import SchemaOptions
 
 __all__ = [
     "NamedSchemaSpec",
@@ -105,6 +106,7 @@ def inspect_named_schemas(
     targets: NamedSchemaTargets | NamedSchemas,
     *,
     spec: NamedSchemaSpec | None = None,
+    options: SchemaOptions | None = None,
 ) -> NamedSchemas:
     """Resolve every named schema target.
 
@@ -112,14 +114,29 @@ def inspect_named_schemas(
         targets: Mapping of names to schema targets, or an existing `NamedSchemas`.
         spec: Keys for the ``{"schema": ..., "payload": ...}`` form. Defaults to the
             existing spec, or to `NamedSchemaSpec()`.
+        options: Pydantic options applied to every schema. An existing
+            `NamedSchemas` is rebuilt with them.
 
     Raises:
         SchemaError: If *targets* is empty, a name is invalid, or a target cannot be
             introspected.
     """
     if isinstance(targets, NamedSchemas):
-        return targets if spec is None else NamedSchemas(targets.schemas, spec)
+        if options is None:
+            return (
+                targets if spec is None else NamedSchemas(targets.schemas, spec)
+            )
+        return NamedSchemas(
+            {
+                name: inspect_schema(info, options=options)
+                for name, info in targets.schemas.items()
+            },
+            spec or targets.spec,
+        )
     return NamedSchemas(
-        {name: inspect_schema(target) for name, target in targets.items()},
+        {
+            name: inspect_schema(target, options=options)
+            for name, target in targets.items()
+        },
         spec or NamedSchemaSpec(),
     )

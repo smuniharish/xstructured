@@ -1,6 +1,6 @@
 # Examples
 
-Nine runnable scripts in [`examples/`](https://github.com/smuniharish/xstructured/tree/master/examples)
+Twelve runnable scripts in [`examples/`](https://github.com/smuniharish/xstructured/tree/master/examples)
 show `xstructured` in realistic applications. Every script runs in two modes:
 
 - **Offline** (default): a scripted chat model replays a realistic response, so the script
@@ -48,7 +48,7 @@ Keep API keys in your environment or a secrets manager; never commit them.
 
 | Example | Shows |
 | --- | --- |
-| [Single-agent extraction](single-agent-extraction.md) | A `create_agent` agent wrapped through a message adapter. |
+| [Single-agent extraction](single-agent-extraction.md) | A tool-calling `create_agent` agent with `XStructuredMiddleware`. |
 | [Multi-agent pipeline](multi-agent-pipeline.md) | Two agents with validated hand-offs. |
 | [Deep Agents research](deep-agent.md) | A `create_deep_agent` planning agent with a validated summary. |
 | [LangGraph workflow](langgraph-workflow.md) | Routing a graph on a validated `Literal` field. |
@@ -57,6 +57,9 @@ Keep API keys in your environment or a secrets manager; never commit them.
 | [Streaming UI events](streaming-ui-events.md) | Ordered text and structured events for a UI. |
 | [Multiple payloads and repair](multiple-payloads-repair.md) | A typed list of mixed schemas, with bounded repair. |
 | [Named envelopes](named-envelopes.md) | Separate envelopes for separate schemas in one reply. |
+| [Output parser chain](output-parser-chain.md) | `XStructuredOutputParser` in a `prompt \| model \| parser` chain. |
+| [Customization](customization.md) | A custom renderer, an observer, and Pydantic strict mode. |
+| [OpenTelemetry tracing](opentelemetry-tracing.md) | Spans for every call, exported over OTLP. |
 
-Live outputs on these pages were captured from real runs against `gpt-5.6-luna`; wording
-varies between runs, while the structure is always validated.
+Live outputs on these pages were captured from real runs against `gpt-5.6-luna`;
+wording varies between runs, while the structure is always validated.

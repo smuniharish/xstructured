@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from xstructured.core.errors import LimitExceededError, ParseError
 from xstructured.core.result import ParseResult
 from xstructured.envelope.scanner import (
@@ -11,6 +13,7 @@ from xstructured.envelope.scanner import (
 )
 from xstructured.envelope.spec import EnvelopeSpec
 from xstructured.parser.parser import StructuredParser
+from xstructured.schema.introspection import UNSET
 
 from .events import StreamEvent, StreamEventKind
 
@@ -27,6 +30,7 @@ class StreamDecoder[T]:
 
     Args:
         parser: Parser providing the schema, limits, recovery settings, and envelope.
+        context: Pydantic validation context for the payload of this stream.
 
     Raises:
         ValueError: If the parser expects named envelopes, which cannot be streamed.
@@ -51,10 +55,13 @@ class StreamDecoder[T]:
         ```
     """
 
-    def __init__(self, parser: StructuredParser[T]) -> None:
+    def __init__(
+        self, parser: StructuredParser[T], *, context: Any = UNSET
+    ) -> None:
         if parser.multiple_envelopes:
             raise ValueError("Named envelopes cannot be streamed")
         self._parser = parser
+        self._context = context
         self._envelope = parser.envelope or EnvelopeSpec()
         self._scanner = EnvelopeScanner(
             self._envelope,
@@ -157,7 +164,9 @@ class StreamDecoder[T]:
                 )
             )
         if scan.completed and scan.payload is not None:
-            self._result = self._parser.parse_payload(scan.payload)
+            self._result = self._parser.parse_payload(
+                scan.payload, context=self._context
+            )
             events.append(
                 self._event(
                     StreamEventKind.STRUCTURED_END,

@@ -8,18 +8,62 @@ response, so repair can only replace an invalid response; it never relaxes valid
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+from typing import Any, override
 
 from langchain_core.runnables import Runnable, RunnableConfig
 
+from xstructured.contracts import OutputTextExtractor, RepairPromptBuilder
 from xstructured.core.config import RepairConfig
 from xstructured.core.errors import ParseError, RecoveryError, RepairError
 from xstructured.core.result import ParseResult
 from xstructured.parser.parser import StructuredParser
 
-from ._messages import output_text
+__all__ = ["DefaultRepairPrompt", "Repairer"]
 
-__all__ = ["Repairer"]
+
+class DefaultRepairPrompt(RepairPromptBuilder):
+    """Build a plain-text repair request.
+
+    The request lists the instructions, every distinct problem found, and the
+    response to correct, and asks for only the corrected response.
+    """
+
+    def __repr__(self) -> str:
+        return "DefaultRepairPrompt()"
+
+    @override
+    def build(
+        self,
+        *,
+        text: str,
+        error: ParseError,
+        attempt: int,
+        max_attempts: int,
+        instructions: str,
+    ) -> str:
+        problems = (
+            error.failures
+            if isinstance(error, RecoveryError)
+            else (str(error),)
+        )
+        return "\n".join(
+            [
+                (
+                    "The response below could not be used because it does not follow the "
+                    "required format. Rewrite the complete response so that it follows the "
+                    "instructions exactly. Return only the corrected response."
+                ),
+                "",
+                "Instructions:",
+                instructions,
+                "",
+                f"Problems (attempt {attempt} of {max_attempts}):",
+                *(f"- {problem}" for problem in dict.fromkeys(problems)),
+                "",
+                "Response to correct:",
+                text,
+            ]
+        )
 
 
 class Repairer[T]:
@@ -31,11 +75,16 @@ class Repairer[T]:
         runnable: Runnable[Any, Any],
         config: RepairConfig,
         instructions: str,
+        *,
+        prompt: RepairPromptBuilder,
+        extractor: OutputTextExtractor,
     ) -> None:
         self._parser = parser
         self._runnable = runnable
         self._config = config
         self._instructions = instructions
+        self._prompt = prompt
+        self._extractor = extractor
 
     @property
     def enabled(self) -> bool:
@@ -43,7 +92,12 @@ class Repairer[T]:
         return self._config.enabled
 
     def repair(
-        self, text: str, error: ParseError, config: RunnableConfig
+        self,
+        text: str,
+        error: ParseError,
+        config: RunnableConfig,
+        *,
+        context: Any,
     ) -> ParseResult[T]:
         """Repair *text*, which failed with *error*.
 
@@ -54,11 +108,11 @@ class Repairer[T]:
         current_text, current_error = text, error
         for attempt in range(1, self._config.max_attempts + 1):
             response = self._runnable.invoke(
-                self._prompt(current_text, current_error, attempt), config
+                self._build(current_text, current_error, attempt), config
             )
-            current_text = output_text(response)
+            current_text = self._extractor.text(response)
             try:
-                parsed = self._parser.parse(current_text)
+                parsed = self._parser.parse(current_text, context=context)
             except ParseError as exc:
                 failures.append(str(exc))
                 current_error = exc
@@ -67,7 +121,12 @@ class Repairer[T]:
         raise self._exhausted(text, failures) from current_error
 
     async def arepair(
-        self, text: str, error: ParseError, config: RunnableConfig
+        self,
+        text: str,
+        error: ParseError,
+        config: RunnableConfig,
+        *,
+        context: Any,
     ) -> ParseResult[T]:
         """Asynchronously repair *text*, which failed with *error*.
 
@@ -78,11 +137,11 @@ class Repairer[T]:
         current_text, current_error = text, error
         for attempt in range(1, self._config.max_attempts + 1):
             response = await self._runnable.ainvoke(
-                self._prompt(current_text, current_error, attempt), config
+                self._build(current_text, current_error, attempt), config
             )
-            current_text = output_text(response)
+            current_text = self._extractor.text(response)
             try:
-                parsed = self._parser.parse(current_text)
+                parsed = self._parser.parse(current_text, context=context)
             except ParseError as exc:
                 failures.append(str(exc))
                 current_error = exc
@@ -90,37 +149,26 @@ class Repairer[T]:
             return replace(parsed, repaired=True, repair_attempts=attempt)
         raise self._exhausted(text, failures) from current_error
 
-    def _prompt(self, text: str, error: ParseError, attempt: int) -> str:
-        problems = (
-            error.failures
-            if isinstance(error, RecoveryError)
-            else (str(error),)
-        )
-        unique = dict.fromkeys(problems)
-        return "\n".join(
-            [
-                (
-                    "The response below could not be used because it does not follow the "
-                    "required format. Rewrite the complete response so that it follows the "
-                    "instructions exactly. Return only the corrected response."
-                ),
-                "",
-                "Instructions:",
-                self._instructions,
-                "",
-                f"Problems (attempt {attempt} of {self._config.max_attempts}):",
-                *(f"- {problem}" for problem in unique),
-                "",
-                "Response to correct:",
-                text,
-            ]
+    def _build(self, text: str, error: ParseError, attempt: int) -> Any:
+        return self._prompt.build(
+            text=text,
+            error=error,
+            attempt=attempt,
+            max_attempts=self._config.max_attempts,
+            instructions=self._instructions,
         )
 
     def _exhausted(self, text: str, failures: list[str]) -> RepairError:
-        attempts = self._config.max_attempts
-        return RepairError(
-            f"LLM-assisted repair did not produce a valid response in {attempts} attempt(s)",
-            text=text,
-            attempts=attempts,
-            failures=tuple(failures),
-        )
+        return exhausted_error(text, failures, self._config.max_attempts)
+
+
+def exhausted_error(
+    text: str, failures: list[str], attempts: int
+) -> RepairError:
+    """Return the error raised when every repair attempt failed."""
+    return RepairError(
+        f"LLM-assisted repair did not produce a valid response in {attempts} attempt(s)",
+        text=text,
+        attempts=attempts,
+        failures=tuple(failures),
+    )

@@ -1,8 +1,10 @@
 # LangChain Runnables
 
 `with_xstructured_output(runnable, schema)` returns an `XStructuredRunnable`. It works
-with any Runnable whose output is a string or a LangChain message: chat models, LLMs,
-chains, and your own Runnables.
+with any Runnable whose output is a string, a LangChain message, or a
+`{"messages": [...]}` state: chat models, LLMs, chains, LangGraph graphs, agents, and
+your own Runnables. For `prompt | model` chains you assemble yourself,
+[`XStructuredOutputParser`](#output-parser) is the alternative.
 
 ## Inputs
 
@@ -18,17 +20,17 @@ input before the wrapped Runnable runs:
 
 For dictionary inputs, for example a chain that starts with a prompt template, pass
 `inject_instructions=False` and include `wrapper.instructions` (or
-`schema_instructions(...)`) in your prompt. See the
-[quickstart](../getting-started/quickstart.md#wrap-a-chain).
+`schema_instructions(...)`) in your prompt, or end the chain with an
+[`XStructuredOutputParser`](../getting-started/quickstart.md#parse-a-chains-output).
 
 ## Outputs
 
 | Method | Returns |
 | --- | --- |
-| `invoke`, `ainvoke` | `XStructuredResult` |
-| `batch`, `abatch` | a list of `XStructuredResult` (native LangChain batching, including `return_exceptions`) |
-| `stream`, `astream` | ordered `StreamEvent` values ending with one `RESULT` event |
-| `transform`, `atransform` (inside a composed chain) | the final `XStructuredResult` |
+| `ainvoke`, `invoke` | `XStructuredResult` |
+| `abatch`, `batch` | a list of `XStructuredResult` (native LangChain batching, including `return_exceptions`) |
+| `astream`, `stream` | ordered `StreamEvent` values ending with one `RESULT` event |
+| `atransform`, `transform` (inside a composed chain) | the final `XStructuredResult` |
 
 An `XStructuredResult` has:
 
@@ -64,7 +66,11 @@ primary = with_xstructured_output(gpt, Summary)
 backup = with_xstructured_output(claude, Summary)
 
 robust = primary.with_retry(stop_after_attempt=2).with_fallbacks([backup])
-summaries = robust.batch(["Summarize document A", "Summarize document B"])
+
+
+async def summarize() -> None:
+    summaries = await robust.abatch(["Summarize A", "Summarize B"])
+    print([summary.structured.title for summary in summaries])
 ```
 
 In a sequence, downstream steps receive the `XStructuredResult`, whether the chain is
@@ -75,6 +81,45 @@ from langchain_core.runnables import RunnableLambda
 
 titles = primary | RunnableLambda(lambda result: result.structured.title)
 ```
+
+## Output parser
+
+`XStructuredOutputParser` is a LangChain output parser. Use it when the prompt
+is built separately, for example with a `ChatPromptTemplate`: add
+`get_format_instructions()` to the prompt and put the parser last in the chain.
+
+```python
+from langchain_core.prompts import ChatPromptTemplate
+
+from xstructured import CONTEXT_KEY, XStructuredOutputParser
+
+parser = XStructuredOutputParser(Summary)
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You summarize documents.\n\n{format_instructions}"),
+        ("human", "{document}"),
+    ]
+).partial(format_instructions=parser.get_format_instructions())
+chain = prompt | gpt | parser
+
+
+async def summarize_document(document: str) -> Summary:
+    config = {"configurable": {CONTEXT_KEY: {"max_bullets": 5}}}
+    result = await chain.ainvoke({"document": document}, config)
+    return result.structured
+```
+
+The parser returns the same `XStructuredResult` as the wrapper and accepts the
+parsing options (`envelope`, `parser_config`, `multiple`, `multiple_envelopes`,
+`schema_options`, `renderer`, `recovery`, `decoder`). Use the wrapper instead
+when you need repair, streaming events, or an observer.
+
+## Validation context
+
+Validators that read `info.context` get a per-call context from the run config
+under `CONTEXT_KEY` (`"xstructured_context"`). It works for the wrapper, the
+output parser, and the agent middleware, and replaces the default
+`SchemaOptions(context=...)` for that call.
 
 ## Typing
 
@@ -102,5 +147,14 @@ because the value can be any of the named types.
 ## Tracing and callbacks
 
 Each call is one traced run with the wrapped Runnable as a child run, and
-`with_config(run_name=..., tags=..., metadata=...)` works as usual. See
+`with_config(run_name=..., tags=..., metadata=...)` works as usual. Pass an
+`observer` for metrics and [OpenTelemetry](opentelemetry.md) spans. See
 [Observability](../guide/observability.md).
+
+## Customization
+
+Every behavior of the wrapper is an [extension point](../guide/extension-points.md):
+the instructions (`renderer`), where they go in the input (`injector`), how output text
+is read (`extractor`), which substrings are tried (`recovery`), how JSON is decoded
+(`decoder`), the repair input (`repair_prompt`), and telemetry (`observer`). Pydantic's
+own options pass through with [`SchemaOptions`](../guide/configuration.md#pydantic-options).

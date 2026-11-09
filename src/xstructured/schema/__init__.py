@@ -1,7 +1,7 @@
 """Schema introspection, instructions, and fingerprints."""
 
 from .fingerprint import canonical_schema_json, fingerprint_schema
-from .instructions import schema_instructions
+from .instructions import DefaultInstructionRenderer, schema_instructions
 from .introspection import SchemaInfo, SchemaTarget, inspect_schema
 from .named import (
     NamedSchemas,
@@ -9,12 +9,15 @@ from .named import (
     NamedSchemaTargets,
     inspect_named_schemas,
 )
+from .options import SchemaOptions
 
 __all__ = [
+    "DefaultInstructionRenderer",
     "NamedSchemaSpec",
     "NamedSchemaTargets",
     "NamedSchemas",
     "SchemaInfo",
+    "SchemaOptions",
     "SchemaTarget",
     "canonical_schema_json",
     "fingerprint_schema",

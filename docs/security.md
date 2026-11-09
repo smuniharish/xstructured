@@ -17,8 +17,11 @@ Model output is untrusted input. `xstructured` bounds, decodes, and validates it
 - **Schema validation.** Every value passes Pydantic v2 validation of your schema.
 - **Quiet errors.** Exception messages never include the model output; it is available
   separately as `error.text`.
-- **Opt-in model calls only.** Nothing besides your wrapped Runnable is called unless you
-  configure a repair Runnable, and oversized responses are never sent to it.
+- **Opt-in model calls only.** Nothing besides your wrapped Runnable or agent model is
+  called unless you configure repair, and oversized responses are never sent to it.
+- **Content-free telemetry.** Observer attributes and OpenTelemetry spans hold sizes,
+  counts, flags, durations, and names; prompts, responses, and parsed values are never
+  recorded.
 
 ## What remains your responsibility
 
@@ -30,7 +33,10 @@ Model output is untrusted input. `xstructured` bounds, decodes, and validates it
 - **Prompt injection.** Text that reaches the model, including retrieved documents, can
   steer what it produces. Validation constrains the shape of the answer, not its intent.
 - **Schema strictness.** Prefer bounded strings and collections, enums or `Literal` for
-  closed sets, and `extra="forbid"` where unknown fields indicate a problem.
+  closed sets, and `extra="forbid"` where unknown fields indicate a problem;
+  `SchemaOptions(strict=True, extra="forbid")` applies both without changing the model.
+- **Custom extension points.** A custom `JsonDecoder` or `RecoveryStrategy` widens what
+  is accepted; keep it bounded and run its contract suite from `xstructured.testing`.
 - **Secrets.** Keep credentials out of prompts, schemas, fixtures, and logs. Avoid
   logging `error.text` or `result.raw_text` where model output may contain personal data.
 

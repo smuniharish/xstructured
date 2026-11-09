@@ -11,28 +11,17 @@ Every example runs in one of two modes:
 
 from __future__ import annotations
 
-import importlib.util
 import os
-from collections.abc import Sequence
-from typing import Any, override
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
+
+from xstructured.testing import ScriptedChatModel
 
 DEFAULT_MODEL = "gpt-5.6-luna"
 DEFAULT_BASE_URL = "https://api.experientiallabs.ai/v1"
-
-
-class ScriptedChatModel(GenericFakeChatModel):
-    """Offline chat model that replays scripted responses and accepts tools."""
-
-    @override
-    def bind_tools(
-        self, tools: Sequence[Any], **kwargs: Any
-    ) -> ScriptedChatModel:
-        """Accept tool definitions; scripted responses never call tools."""
-        return self
 
 
 def is_live() -> bool:
@@ -40,32 +29,27 @@ def is_live() -> bool:
     return bool(os.environ.get("EXPLABS_API_KEY"))
 
 
-def chat_model(*scripted: str) -> BaseChatModel:
-    """Return the live chat model, or an offline one replaying *scripted*."""
-    if is_live():
-        from langchain_openai import ChatOpenAI
+@asynccontextmanager
+async def chat_model(
+    *scripted: str | AIMessage,
+) -> AsyncGenerator[BaseChatModel]:
+    """Yield the live chat model, or an offline one replaying *scripted*.
 
-        return ChatOpenAI(
+    The live model's HTTP connections are closed on exit.
+    """
+    if not is_live():
+        yield ScriptedChatModel.of(*scripted)
+        return
+    import openai
+    from langchain_openai import ChatOpenAI
+
+    async with openai.DefaultAsyncHttpxClient() as http_client:
+        yield ChatOpenAI(
             model=os.environ.get("EXPLABS_MODEL", DEFAULT_MODEL),
             base_url=os.environ.get("EXPLABS_BASE_URL", DEFAULT_BASE_URL),
             api_key=os.environ["EXPLABS_API_KEY"],
+            http_async_client=http_client,
         )
-    return ScriptedChatModel(
-        messages=iter([AIMessage(content=text) for text in scripted])
-    )
-
-
-def require_packages(*modules: str) -> None:
-    """Exit with setup guidance when an optional dependency is missing."""
-    missing = [
-        module for module in modules if importlib.util.find_spec(module) is None
-    ]
-    if missing:
-        print(
-            f"This example needs {', '.join(missing)}. Install the example "
-            "dependencies with:\n  uv sync --group examples"
-        )
-        raise SystemExit(0)
 
 
 def banner(title: str) -> None:

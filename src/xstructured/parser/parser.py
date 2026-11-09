@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from itertools import islice
 from typing import Any, Literal, overload
@@ -11,6 +11,11 @@ from typing import Any, Literal, overload
 from pydantic import TypeAdapter, ValidationError
 
 from xstructured._scan import scan_for_delimiter
+from xstructured.contracts import (
+    JsonDecoder,
+    RecoveryStrategy,
+    require_instance,
+)
 from xstructured.core.config import ParserConfig
 from xstructured.core.errors import (
     LimitExceededError,
@@ -21,27 +26,20 @@ from xstructured.core.errors import (
 from xstructured.core.result import ParseResult
 from xstructured.envelope.scanner import EnvelopeScanner, EnvelopeState
 from xstructured.envelope.spec import EnvelopeSpec
-from xstructured.schema._resolve import is_named_targets
-from xstructured.schema.introspection import (
-    SchemaInfo,
-    SchemaTarget,
-    inspect_schema,
-)
-from xstructured.schema.named import (
-    NamedSchemas,
-    NamedSchemaTargets,
-    inspect_named_schemas,
-)
+from xstructured.schema._resolve import resolve_schema
+from xstructured.schema.introspection import UNSET, SchemaInfo, SchemaTarget
+from xstructured.schema.named import NamedSchemas, NamedSchemaTargets
+from xstructured.schema.options import SchemaOptions
 
-from .json_safety import JsonSafetyError, loads_strict
-from .recovery import recovery_candidates
+from .json_safety import JsonSafetyError, StrictJsonDecoder
+from .recovery import ConservativeRecovery
 
 __all__ = ["StructuredParser"]
 
 _CANDIDATE_ERRORS = (RecursionError, SchemaError, TypeError, ValueError)
 _MAX_REPORTED_ERRORS = 10
 
-type _Validator = Callable[[Any, str], tuple[Any, str | None]]
+type _Validator = Callable[[Any, str, Any], tuple[Any, str | None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,9 +70,14 @@ class StructuredParser[T]:
         multiple: Expect a JSON array and validate every item; the value is a list.
         multiple_envelopes: Expect one tag-style envelope per named schema, such as
             ``<xstructured name="finding">``; the value is a dict keyed by name.
+        schema_options: Pydantic options for the adapter, JSON Schema, and validation.
+        recovery: Chooses the candidates to try. Defaults to `ConservativeRecovery`
+            configured from `RecoveryConfig`.
+        decoder: Decodes each candidate. Defaults to `StrictJsonDecoder`.
 
     Raises:
         ValueError: If *multiple* and *multiple_envelopes* are both set.
+        TypeError: If *recovery* or *decoder* does not subclass its base class.
         SchemaError: If the schema cannot be introspected, a JSON Schema document is
             passed, or *multiple_envelopes* is set without named schemas.
         EnvelopeError: If *multiple_envelopes* is set with non-tag-style delimiters.
@@ -104,6 +107,9 @@ class StructuredParser[T]:
         envelope: EnvelopeSpec | None = None,
         multiple: Literal[False] = False,
         multiple_envelopes: Literal[False] = False,
+        schema_options: SchemaOptions | None = None,
+        recovery: RecoveryStrategy | None = None,
+        decoder: JsonDecoder | None = None,
     ) -> None: ...
 
     @overload
@@ -115,6 +121,9 @@ class StructuredParser[T]:
         envelope: EnvelopeSpec | None = None,
         multiple: Literal[True],
         multiple_envelopes: Literal[False] = False,
+        schema_options: SchemaOptions | None = None,
+        recovery: RecoveryStrategy | None = None,
+        decoder: JsonDecoder | None = None,
     ) -> None: ...
 
     @overload
@@ -126,6 +135,9 @@ class StructuredParser[T]:
         envelope: EnvelopeSpec | None = None,
         multiple: Literal[False] = False,
         multiple_envelopes: Literal[False] = False,
+        schema_options: SchemaOptions | None = None,
+        recovery: RecoveryStrategy | None = None,
+        decoder: JsonDecoder | None = None,
     ) -> None: ...
 
     @overload
@@ -137,6 +149,9 @@ class StructuredParser[T]:
         envelope: EnvelopeSpec | None = None,
         multiple: Literal[True],
         multiple_envelopes: Literal[False] = False,
+        schema_options: SchemaOptions | None = None,
+        recovery: RecoveryStrategy | None = None,
+        decoder: JsonDecoder | None = None,
     ) -> None: ...
 
     @overload
@@ -148,6 +163,9 @@ class StructuredParser[T]:
         envelope: EnvelopeSpec | None = None,
         multiple: Literal[False] = False,
         multiple_envelopes: Literal[True],
+        schema_options: SchemaOptions | None = None,
+        recovery: RecoveryStrategy | None = None,
+        decoder: JsonDecoder | None = None,
     ) -> None: ...
 
     @overload
@@ -159,6 +177,9 @@ class StructuredParser[T]:
         envelope: EnvelopeSpec | None = None,
         multiple: bool = False,
         multiple_envelopes: bool = False,
+        schema_options: SchemaOptions | None = None,
+        recovery: RecoveryStrategy | None = None,
+        decoder: JsonDecoder | None = None,
     ) -> None: ...
 
     def __init__(
@@ -169,27 +190,38 @@ class StructuredParser[T]:
         envelope: EnvelopeSpec | None = None,
         multiple: bool = False,
         multiple_envelopes: bool = False,
+        schema_options: SchemaOptions | None = None,
+        recovery: RecoveryStrategy | None = None,
+        decoder: JsonDecoder | None = None,
     ) -> None:
         if multiple and multiple_envelopes:
             raise ValueError(
                 "multiple and multiple_envelopes are mutually exclusive"
             )
-        resolved: SchemaInfo | NamedSchemas
-        if isinstance(schema, (SchemaInfo, NamedSchemas)):
-            resolved = schema
-        elif is_named_targets(schema):
-            resolved = inspect_named_schemas(schema)
-        elif isinstance(schema, Mapping):
+        resolved = resolve_schema(schema, options=schema_options)
+        if isinstance(resolved, dict):
             raise SchemaError(
                 "StructuredParser needs Pydantic schema targets; a JSON Schema document "
                 "cannot validate values"
             )
-        else:
-            resolved = inspect_schema(schema)
         if multiple_envelopes and not isinstance(resolved, NamedSchemas):
             raise SchemaError("multiple_envelopes requires named schemas")
 
         self._config = config or ParserConfig()
+        recovery_config = self._config.recovery
+        self._recovery: RecoveryStrategy = (
+            ConservativeRecovery(
+                strip_markdown_fences=recovery_config.strip_markdown_fences,
+                strip_surrounding_text=recovery_config.strip_surrounding_text,
+            )
+            if recovery is None
+            else require_instance(recovery, RecoveryStrategy, "recovery")
+        )
+        self._decoder: JsonDecoder = (
+            StrictJsonDecoder()
+            if decoder is None
+            else require_instance(decoder, JsonDecoder, "decoder")
+        )
         if envelope is None and (
             multiple_envelopes or self._config.require_envelope
         ):
@@ -217,6 +249,16 @@ class StructuredParser[T]:
         return self._config
 
     @property
+    def recovery(self) -> RecoveryStrategy:
+        """The recovery strategy used when `RecoveryConfig.enabled` is set."""
+        return self._recovery
+
+    @property
+    def decoder(self) -> JsonDecoder:
+        """The JSON decoder applied to every candidate."""
+        return self._decoder
+
+    @property
     def envelope(self) -> EnvelopeSpec | None:
         """The envelope delimiters, or ``None`` when the whole text is parsed."""
         return self._envelope
@@ -231,8 +273,13 @@ class StructuredParser[T]:
         """Whether one named envelope per schema is expected."""
         return self._named_envelopes is not None
 
-    def parse(self, text: str) -> ParseResult[T]:
+    def parse(self, text: str, *, context: Any = UNSET) -> ParseResult[T]:
         """Parse one complete response.
+
+        Args:
+            text: The complete model response.
+            context: Pydantic validation context for this call. Defaults to
+                `SchemaOptions.context`.
 
         Raises:
             TypeError: If *text* is not a string.
@@ -251,10 +298,12 @@ class StructuredParser[T]:
                 maximum=maximum,
             )
         if self._named_envelopes is not None:
-            return self._parse_named_envelopes(text, *self._named_envelopes)
+            return self._parse_named_envelopes(
+                text, *self._named_envelopes, context=context
+            )
         payload, spans = self._extract(text)
         value, json_text, recovered, schema_name = self._first_valid(
-            payload, self._validate, raw=text, label=""
+            payload, self._validate, raw=text, label="", context=context
         )
         return ParseResult(
             value=value,
@@ -265,11 +314,18 @@ class StructuredParser[T]:
             schema_name=schema_name,
         )
 
-    def parse_payload(self, payload: str) -> ParseResult[T]:
+    def parse_payload(
+        self, payload: str, *, context: Any = UNSET
+    ) -> ParseResult[T]:
         """Parse JSON text that was already extracted from its envelope.
 
         Recovery and validation work as in `parse`; envelope handling and the input
         limit are skipped. `ParseResult.raw` is the payload itself.
+
+        Args:
+            payload: The extracted payload text.
+            context: Pydantic validation context for this call. Defaults to
+                `SchemaOptions.context`.
 
         Raises:
             TypeError: If *payload* is not a string.
@@ -282,7 +338,7 @@ class StructuredParser[T]:
         if self._named_envelopes is not None:
             raise ValueError("parse_payload does not support named envelopes")
         value, json_text, recovered, schema_name = self._first_valid(
-            payload, self._validate, raw=payload, label=""
+            payload, self._validate, raw=payload, label="", context=context
         )
         return ParseResult(
             value=value,
@@ -344,7 +400,12 @@ class StructuredParser[T]:
         return text, ()
 
     def _parse_named_envelopes(
-        self, text: str, named: NamedSchemas, envelope: EnvelopeSpec
+        self,
+        text: str,
+        named: NamedSchemas,
+        envelope: EnvelopeSpec,
+        *,
+        context: Any,
     ) -> ParseResult[T]:
         values: dict[str, Any] = {}
         json_texts: dict[str, str] = {}
@@ -373,6 +434,7 @@ class StructuredParser[T]:
                 _schema_validator(named.schemas[match.name]),
                 raw=text,
                 label=f"named envelope {match.name!r}",
+                context=context,
             )
             values[match.name] = value
             json_texts[match.name] = json_text
@@ -416,16 +478,18 @@ class StructuredParser[T]:
             )
 
     def _first_valid(
-        self, payload: str, validate: _Validator, *, raw: str, label: str
+        self,
+        payload: str,
+        validate: _Validator,
+        *,
+        raw: str,
+        label: str,
+        context: Any,
     ) -> tuple[Any, str, bool, str | None]:
         recovery = self._config.recovery
         candidates: Iterator[str] = (
             islice(
-                recovery_candidates(
-                    payload,
-                    strip_markdown_fences=recovery.strip_markdown_fences,
-                    strip_surrounding_text=recovery.strip_surrounding_text,
-                ),
+                iter(self._recovery.candidates(payload)),
                 recovery.max_candidates,
             )
             if recovery.enabled
@@ -437,18 +501,19 @@ class StructuredParser[T]:
         for index, candidate in enumerate(candidates):
             try:
                 decoded = self._decode(candidate)
+                json_text = self._decoder.json_text(candidate, decoded)
             except _CANDIDATE_ERRORS as exc:
                 failures.append(_describe(exc))
                 first_error = first_error or exc
                 continue
             try:
-                value, schema_name = validate(decoded, candidate)
+                value, schema_name = validate(decoded, json_text, context)
             except _CANDIDATE_ERRORS as exc:
                 failures.append(_describe(exc))
                 first_error = first_error or exc
                 schema_failure = schema_failure or (failures[-1], exc)
                 continue
-            return value, candidate, index > 0, schema_name
+            return value, json_text, index > 0, schema_name
 
         where = f" in {label}" if label else ""
         if not failures:
@@ -470,20 +535,22 @@ class StructuredParser[T]:
                 "JSON payload exceeds the configured limit of "
                 f"{self._config.max_payload_chars} characters"
             )
-        return loads_strict(
+        return self._decoder.decode(
             candidate, max_nesting_depth=self._config.max_nesting_depth
         )
 
-    def _validate(self, decoded: Any, candidate: str) -> tuple[Any, str | None]:
+    def _validate(
+        self, decoded: Any, json_text: str, context: Any
+    ) -> tuple[Any, str | None]:
         if not self._multiple:
-            return self._validate_item(decoded, candidate)
+            return self._validate_item(decoded, json_text, context)
         if not isinstance(decoded, list):
             raise TypeError("Expected a JSON array of values")
         values: list[Any] = []
         names: set[str | None] = set()
         for index, item in enumerate(decoded):
             try:
-                value, name = self._validate_item(item, None)
+                value, name = self._validate_item(item, None, context)
             except _CANDIDATE_ERRORS as exc:
                 raise ValueError(f"item {index}: {_describe(exc)}") from exc
             values.append(value)
@@ -491,12 +558,12 @@ class StructuredParser[T]:
         return values, names.pop() if len(names) == 1 else None
 
     def _validate_item(
-        self, decoded: Any, candidate: str | None
+        self, decoded: Any, json_text: str | None, context: Any
     ) -> tuple[Any, str | None]:
         schema = self._schema
         if isinstance(schema, SchemaInfo):
-            text = candidate if candidate is not None else _dumps(decoded)
-            return schema.validate_json(text), None
+            text = json_text if json_text is not None else _dumps(decoded)
+            return schema.validate_json(text, context=context), None
         spec = schema.spec
         if not isinstance(decoded, dict):
             raise TypeError(
@@ -510,7 +577,7 @@ class StructuredParser[T]:
         if spec.payload_key not in decoded:
             raise ValueError(f"Missing {spec.payload_key!r} key")
         return schema.resolve(name).validate_json(
-            _dumps(decoded[spec.payload_key])
+            _dumps(decoded[spec.payload_key]), context=context
         ), name
 
 
@@ -540,8 +607,10 @@ def _scan_named(text: str, envelope: EnvelopeSpec) -> list[_NamedMatch]:
 
 
 def _schema_validator(info: SchemaInfo) -> _Validator:
-    def validate(_decoded: Any, candidate: str) -> tuple[Any, str | None]:
-        return info.validate_json(candidate), None
+    def validate(
+        _decoded: Any, json_text: str, context: Any
+    ) -> tuple[Any, str | None]:
+        return info.validate_json(json_text, context=context), None
 
     return validate
 

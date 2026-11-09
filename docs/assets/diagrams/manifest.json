@@ -1,12 +1,10 @@
 {
-  "mermaidCli": "12.0.0",
-  "options": [
-    "--scale",
-    "2",
-    "--backgroundColor",
-    "white"
-  ],
-  "config": "29e8ed8d5315c1c1e9261da3ad91a5af06f6e6a02120e93cbe007905f58e2a20",
+  "mermaidVersion": "12.2.0",
+  "renderOptions": {
+    "scale": 2,
+    "background": "white"
+  },
+  "configChecksum": "29e8ed8d5315c1c1e9261da3ad91a5af06f6e6a02120e93cbe007905f58e2a20",
   "sources": {
     "architecture-overview.mmd": "f6f0f0fd3c4d05dfe47841c5a559e523771ea6fd2715064e7f54f2f900ea2fe6",
     "benchmark-harness.mmd": "7ed7ab5dd84aa52c749dd53317a1ff0366d2347a384778476960c6e012291a20",

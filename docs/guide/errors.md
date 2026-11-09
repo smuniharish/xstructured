@@ -72,7 +72,8 @@ assert extract(StructuredParser(Answer), '{"value": 1}') == Answer(value=1)
 assert extract(StructuredParser(Answer), "no JSON here") is None
 ```
 
-With the LangChain wrapper, the same exceptions propagate from `invoke`, `ainvoke`,
-`stream`, and `astream`. Combine them with LangChain's own resilience tools, for example
+The same exceptions propagate from the wrapper's `ainvoke` and `astream` (and their
+sync counterparts), from `XStructuredOutputParser`, and from agents that use
+`XStructuredMiddleware`. Combine them with LangChain's own resilience tools, for example
 `wrapper.with_retry(retry_if_exception_type=(RecoveryError,))` to resample the model, or
 `wrapper.with_fallbacks([...])` to try another model.

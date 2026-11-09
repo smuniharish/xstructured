@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest an idea or capability for xstructured
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. xstructured has deliberate scope
+        boundaries (see the README): it turns one model response into
+        natural-language text plus validated Pydantic data for LangChain
+        Runnables, agents, and graphs. It is not an agent framework, a model
+        provider, or a tracing backend.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the use case or limitation you've run into.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >
+        What would you like to see added or changed? If you have an idea for
+        the API shape (a new extension point, option, or event), sketch it
+        here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any alternative approaches or workarounds you've tried.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, references, or examples from other projects that motivate this request.

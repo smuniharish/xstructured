@@ -70,6 +70,24 @@
   overflow-wrap: anywhere;
 }
 
+/* The agentic installation block on the Agent Skills page. */
+.md-typeset .xs-agentic {
+  margin: 1.5rem 0;
+  padding: 0.4rem 1.4rem 1rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.8rem;
+  background: linear-gradient(135deg, rgb(79 70 229 / 7%), rgb(16 185 129 / 6%));
+}
+
+.md-typeset .xs-agentic > h2 {
+  margin-top: 0.8rem;
+}
+
+.md-typeset .xs-agentic .tabbed-set {
+  border-radius: 0.5rem;
+  background: var(--md-default-bg-color);
+}
+
 /* Cards and tables. */
 .md-typeset .grid.cards > ul > li {
   border-radius: 0.6rem;

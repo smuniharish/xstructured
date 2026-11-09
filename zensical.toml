@@ -1,0 +1,194 @@
+# Documentation site, built with Zensical: `uv run zensical build --strict`.
+# Preview locally with `uv run zensical serve`.
+
+[project]
+site_name = "xstructured"
+site_description = "Schema-guided structured output for LangChain v1 Runnables, agents, and graphs: validated Pydantic data and natural-language text from one response."
+site_url = "https://xstructured.readthedocs.io/en/latest/"
+site_author = "smuniharish"
+repo_name = "smuniharish/xstructured"
+repo_url = "https://github.com/smuniharish/xstructured"
+edit_uri = "edit/master/docs/"
+copyright = "Copyright &copy; xstructured contributors. Released under the Apache License 2.0."
+extra_css = ["stylesheets/extra.css"]
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = [
+    "getting-started/index.md",
+    { "Installation" = "getting-started/installation.md" },
+    { "Quickstart" = "getting-started/quickstart.md" },
+  ] },
+  { "User guide" = [
+    "guide/index.md",
+    { "Envelopes" = "guide/envelopes.md" },
+    { "Parsing and recovery" = "guide/parsing.md" },
+    { "Schemas and instructions" = "guide/schemas.md" },
+    { "Multiple payloads" = "guide/multiple-payloads.md" },
+    { "Streaming" = "guide/streaming.md" },
+    { "Bounded repair" = "guide/repair.md" },
+    { "Configuration and limits" = "guide/configuration.md" },
+    { "Extension points" = "guide/extension-points.md" },
+    { "Error handling" = "guide/errors.md" },
+    { "Observability" = "guide/observability.md" },
+    { "Testing" = "guide/testing.md" },
+  ] },
+  { "Integrations" = [
+    "integrations/index.md",
+    { "LangChain Runnables" = "integrations/langchain.md" },
+    { "Agents and Deep Agents" = "integrations/agents.md" },
+    { "LangGraph" = "integrations/langgraph.md" },
+    { "OpenTelemetry" = "integrations/opentelemetry.md" },
+    { "Why xstructured?" = "integrations/why-xstructured.md" },
+  ] },
+  { "Examples" = [
+    "examples/index.md",
+    { "Single-agent extraction" = "examples/single-agent-extraction.md" },
+    { "Multi-agent pipeline" = "examples/multi-agent-pipeline.md" },
+    { "Deep Agents research" = "examples/deep-agent.md" },
+    { "LangGraph workflow" = "examples/langgraph-workflow.md" },
+    { "RAG with citations" = "examples/rag-citations.md" },
+    { "Incident analysis" = "examples/incident-analysis.md" },
+    { "Streaming UI events" = "examples/streaming-ui-events.md" },
+    { "Multiple payloads and repair" = "examples/multiple-payloads-repair.md" },
+    { "Named envelopes" = "examples/named-envelopes.md" },
+    { "Output parser chain" = "examples/output-parser-chain.md" },
+    { "Customization" = "examples/customization.md" },
+    { "OpenTelemetry tracing" = "examples/opentelemetry-tracing.md" },
+  ] },
+  { "Architecture" = "architecture.md" },
+  { "Agent Skills" = [
+    "agent-skills/index.md",
+    { "xstructured" = "agent-skills/xstructured.md" },
+    { "xstructured-extend" = "agent-skills/xstructured-extend.md" },
+    { "Install in your agent" = "agent-skills/install.md" },
+    { "Evaluation" = "agent-skills/evaluation.md" },
+  ] },
+  { "Security" = "security.md" },
+  { "Benchmarks" = "benchmarks.md" },
+  { "API reference" = [
+    "api/index.md",
+    { "Runnable integration" = "api/runnable.md" },
+    { "Agent middleware" = "api/agents.md" },
+    { "Output parser" = "api/output-parser.md" },
+    { "Parsing" = "api/parsing.md" },
+    { "Envelopes" = "api/envelopes.md" },
+    { "Schemas" = "api/schemas.md" },
+    { "Streaming" = "api/streaming.md" },
+    { "Configuration" = "api/configuration.md" },
+    { "Extension points" = "api/contracts.md" },
+    { "Observability" = "api/observability.md" },
+    { "Testing" = "api/testing.md" },
+    { "Results" = "api/results.md" },
+    { "Errors" = "api/errors.md" },
+  ] },
+  { "Project" = [
+    { "Changelog" = "changelog.md" },
+    { "Contributing" = "contributing.md" },
+  ] },
+]
+
+# `zensical build --strict` fails on any of these.
+[project.validation]
+invalid_links = true
+invalid_link_anchors = true
+unresolved_references = true
+unresolved_footnotes = true
+unused_definitions = true
+unused_footnotes = true
+shadowed_definitions = true
+shadowed_footnotes = true
+
+[project.theme]
+font = false
+logo = "assets/logo.svg"
+favicon = "assets/logo.svg"
+icon.repo = "fontawesome/brands/github"
+features = [
+  "content.action.edit",
+  "content.code.annotate",
+  "content.code.copy",
+  "content.tabs.link",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.sections",
+  "navigation.tabs",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+  "search.share",
+  "search.suggest",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "material/weather-night"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "material/weather-sunny"
+toggle.name = "Switch to light mode"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/smuniharish/xstructured"
+name = "xstructured on GitHub"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/python"
+link = "https://pypi.org/project/xstructured/"
+name = "xstructured on PyPI"
+
+# Click a diagram to open it full size, with zoom.
+[project.plugins.glightbox]
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["src"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_style = "google"
+extensions = [{ griffe_pydantic = { schema = false } }]
+show_source = false
+show_root_heading = true
+show_root_full_path = false
+show_if_no_docstring = false
+filters = ["!^_"]
+show_symbol_type_heading = true
+merge_init_into_class = true
+separate_signature = true
+show_signature_annotations = true
+signature_crossrefs = true
+members_order = "source"
+heading_level = 2
+line_length = 80
+unwrap_annotated = true
+
+[project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.betterem = {}
+pymdownx.details = {}
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
+pymdownx.highlight.anchor_linenums = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.snippets.base_path = ["."]
+pymdownx.snippets.check_paths = true
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true

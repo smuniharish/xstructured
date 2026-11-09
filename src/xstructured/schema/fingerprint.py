@@ -10,6 +10,7 @@ from typing import Any
 from ._resolve import resolve_schema, strip_annotations
 from .introspection import SchemaInfo, SchemaTarget
 from .named import NamedSchemas, NamedSchemaTargets
+from .options import SchemaOptions
 
 __all__ = ["canonical_schema_json", "fingerprint_schema"]
 
@@ -37,6 +38,7 @@ def canonical_schema_json(
     | Mapping[str, Any],
     *,
     include_metadata: bool = False,
+    options: SchemaOptions | None = None,
 ) -> str:
     """Return a stable, compact JSON serialization of a schema.
 
@@ -46,12 +48,13 @@ def canonical_schema_json(
         include_metadata: Keep annotation keywords such as ``title``, ``description``,
             ``default`` and ``examples``. By default they are removed, so documentation
             changes do not change the result.
+        options: Pydantic options used to generate the JSON Schema of Pydantic targets.
 
     Raises:
         SchemaError: If *target* cannot be introspected.
     """
     keywords = frozenset() if include_metadata else _ANNOTATIONS
-    resolved = resolve_schema(target)
+    resolved = resolve_schema(target, options=options)
     document: Any
     if isinstance(resolved, NamedSchemas):
         document = {
@@ -85,6 +88,7 @@ def fingerprint_schema(
     *,
     algorithm: str = "sha256",
     include_metadata: bool = False,
+    options: SchemaOptions | None = None,
 ) -> str:
     """Hash a schema's canonical JSON (see `canonical_schema_json`).
 
@@ -97,6 +101,7 @@ def fingerprint_schema(
             or a JSON Schema document.
         algorithm: A fixed-length `hashlib` algorithm name.
         include_metadata: Include annotation keywords in the hash.
+        options: Pydantic options used to generate the JSON Schema of Pydantic targets.
 
     Returns:
         The hexadecimal digest.
@@ -115,7 +120,7 @@ def fingerprint_schema(
         )
     hasher.update(
         canonical_schema_json(
-            target, include_metadata=include_metadata
+            target, include_metadata=include_metadata, options=options
         ).encode()
     )
     return hasher.hexdigest()

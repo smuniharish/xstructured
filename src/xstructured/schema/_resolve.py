@@ -7,6 +7,7 @@ from typing import Any, TypeGuard
 
 from .introspection import SchemaInfo, SchemaTarget, inspect_schema
 from .named import NamedSchemas, NamedSchemaTargets, inspect_named_schemas
+from .options import SchemaOptions
 
 __all__ = ["is_named_targets", "resolve_schema", "strip_annotations"]
 
@@ -62,19 +63,23 @@ def resolve_schema(
     | NamedSchemaTargets
     | NamedSchemas
     | Mapping[str, Any],
+    *,
+    options: SchemaOptions | None = None,
 ) -> SchemaInfo | NamedSchemas | dict[str, Any]:
     """Classify and resolve a schema argument.
 
     Returns a `SchemaInfo` for a single target, `NamedSchemas` for named targets, or a
-    plain ``dict`` for a JSON Schema document.
+    plain ``dict`` for a JSON Schema document. *options* apply to Pydantic targets.
     """
-    if isinstance(target, (SchemaInfo, NamedSchemas)):
-        return target
+    if isinstance(target, NamedSchemas):
+        return inspect_named_schemas(target, options=options)
+    if isinstance(target, SchemaInfo):
+        return inspect_schema(target, options=options)
     if is_named_targets(target):
-        return inspect_named_schemas(target)
+        return inspect_named_schemas(target, options=options)
     if isinstance(target, Mapping):
         return dict(target)
-    return inspect_schema(target)
+    return inspect_schema(target, options=options)
 
 
 def strip_annotations(

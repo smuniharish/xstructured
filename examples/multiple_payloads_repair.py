@@ -10,6 +10,7 @@ Run it with ``uv run python examples/multiple_payloads_repair.py``.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 
 from pydantic import BaseModel
@@ -51,20 +52,23 @@ class Action(BaseModel):
     priority: Literal["low", "medium", "high"]
 
 
-def main() -> None:
-    model = chat_model(INVALID_REPLY)
-    chain = with_xstructured_output(
-        model,
-        {"finding": Finding, "action": Action},
-        multiple=True,
-        repair=model if is_live() else chat_model(REPAIRED_REPLY),
-        repair_config=RepairConfig(max_attempts=2),
-    )
-    result = chain.invoke(
-        "Review this incident: checkout failures rose after the release, a "
-        "rollback restored the error rate, and a canary check should be "
-        "added before the next deploy."
-    )
+async def main() -> None:
+    async with (
+        chat_model(INVALID_REPLY) as model,
+        chat_model(REPAIRED_REPLY) as scripted_repair,
+    ):
+        chain = with_xstructured_output(
+            model,
+            {"finding": Finding, "action": Action},
+            multiple=True,
+            repair=model if is_live() else scripted_repair,
+            repair_config=RepairConfig(max_attempts=2),
+        )
+        result = await chain.ainvoke(
+            "Review this incident: checkout failures rose after the release, "
+            "a rollback restored the error rate, and a canary check should be "
+            "added before the next deploy."
+        )
 
     banner("Multiple payloads with bounded repair")
     for item in result.structured:
@@ -73,4 +77,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

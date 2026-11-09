@@ -18,7 +18,7 @@ from xstructured import (
     ParseError,
     StructuredParser,
 )
-from xstructured.parser.json_safety import JsonSafetyError, loads_strict
+from xstructured.parser.json_safety import JsonSafetyError, StrictJsonDecoder
 
 JSON_SCALARS = (
     st.none()
@@ -71,7 +71,10 @@ RECORDS = st.builds(
 
 @given(value=JSON_VALUES)
 def test_strict_decoding_round_trips_standard_json(value: Any) -> None:
-    assert loads_strict(json.dumps(value), max_nesting_depth=1_000) == value
+    assert (
+        StrictJsonDecoder().decode(json.dumps(value), max_nesting_depth=1_000)
+        == value
+    )
 
 
 @given(key=st.text(max_size=5), first=JSON_SCALARS, second=JSON_SCALARS)
@@ -82,7 +85,7 @@ def test_duplicate_keys_are_always_rejected(
     document = f"{{{name}: {json.dumps(first)}, {name}: {json.dumps(second)}}}"
 
     with pytest.raises(JsonSafetyError, match="Duplicate"):
-        loads_strict(document, max_nesting_depth=10)
+        StrictJsonDecoder().decode(document, max_nesting_depth=10)
 
 
 @given(
@@ -145,4 +148,7 @@ def test_envelopes_are_extracted_at_any_chunk_boundaries(
 def test_finite_floats_are_preserved_exactly(value: float) -> None:
     assume(math.isfinite(value))
 
-    assert loads_strict(json.dumps(value), max_nesting_depth=1) == value
+    assert (
+        StrictJsonDecoder().decode(json.dumps(value), max_nesting_depth=1)
+        == value
+    )

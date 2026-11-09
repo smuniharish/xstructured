@@ -10,35 +10,36 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 # Actions are pinned to full commit SHAs, with the release in a comment;
 # Dependabot keeps both up to date.
 jobs:
   lint:
-    name: Lint and type-check
+    name: Lint and type check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.14"
-      - run: uv sync --locked
+          enable-cache: true
+      - run: uv sync --locked --all-extras --all-groups
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pyrefly check
 
   test:
-    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    name: Test on Python ${{ matrix.python-version }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ["3.12", "3.13", "3.14", "3.15"]
         include:
           - os: windows-latest
             python-version: "3.14"
@@ -50,28 +51,76 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --locked
-      - run: uv run pytest --cov --cov-report=term-missing
+          enable-cache: true
+      - run: uv sync --locked --all-extras --all-groups
+      # Warnings are errors (pyproject.toml), and coverage must stay at 100%.
+      - run: uv run coverage run -m pytest
+      - run: uv run coverage report
 
-  package:
-    name: Build and verify the distribution
+  lowest:
+    name: Test with the lowest supported dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --resolution lowest-direct --all-extras --all-groups
+      - run: uv run --no-sync pytest
+
+  package:
+    name: Build and smoke-test the package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.14"
+          enable-cache: true
       - run: uv build
       - run: uvx twine check --strict dist/*
-      - name: Install the wheel into a clean environment
+      - name: Verify the core wheel without optional integrations
         run: |
-          uv venv /tmp/smoke
-          uv pip install --python /tmp/smoke dist/*.whl
-          /tmp/smoke/bin/python -c "import xstructured; print(xstructured.__version__)"
-      - name: Validate the Agent Skill
-        run: uvx --from skills-ref agentskills validate skills/xstructured
+          uv venv --no-project "$RUNNER_TEMP/wheel"
+          uv pip install --python "$RUNNER_TEMP/wheel" dist/*.whl
+          "$RUNNER_TEMP/wheel/bin/python" -c "import importlib.util, xstructured; assert all(importlib.util.find_spec(name) is None for name in ('langchain', 'langgraph', 'deepagents', 'opentelemetry')); print(xstructured.__version__)"
+          "$RUNNER_TEMP/wheel/bin/python" xstructured-skills/skills/xstructured/scripts/verify_setup.py
+          for factory in decoder_template:PythonLiteralDecoder decoder_template:LastLineFirst observer_template:MetricsObserver; do
+            "$RUNNER_TEMP/wheel/bin/python" xstructured-skills/skills/xstructured-extend/scripts/check_extension.py "$factory" --path xstructured-skills/skills/xstructured-extend/assets
+          done
+      - name: Install every extra and run the agent setup check
+        run: |
+          uv pip install --python "$RUNNER_TEMP/wheel" "dist/xstructured-$(uv version --short)-py3-none-any.whl[all]"
+          "$RUNNER_TEMP/wheel/bin/python" -c "import xstructured.agents, xstructured.otel, xstructured.testing"
+          "$RUNNER_TEMP/wheel/bin/python" xstructured-skills/skills/xstructured/scripts/verify_setup.py --agents
+      - name: Validate the agent skills
+        run: |
+          uvx --from skills-ref agentskills validate xstructured-skills/skills/xstructured
+          uvx --from skills-ref agentskills validate xstructured-skills/skills/xstructured-extend
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+      - run: uv sync --locked --group docs --all-extras
+      - run: uv run zensical build --strict
+      - run: uv run python scripts/check_site_links.py
+      - run: node scripts/render-diagrams.mjs --check

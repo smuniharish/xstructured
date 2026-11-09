@@ -1,0 +1,25 @@
+{
+  "skill_name": "xstructured",
+  "queries": [
+    {"query": "get both the chat answer and a validated pydantic object from one LLM response in langchain", "should_trigger": true, "split": "train"},
+    {"query": "add xstructured middleware to my create_agent agent so it returns a typed booking", "should_trigger": true, "split": "train"},
+    {"query": "stream the prose to the UI and render a card once the JSON part of the reply validates", "should_trigger": true, "split": "train"},
+    {"query": "with_xstructured_output raises RecoveryError: No recovery candidate is valid JSON matching the schema", "should_trigger": true, "split": "train"},
+    {"query": "our model sometimes wraps the JSON in markdown fences and our json.loads breaks, we want validated output plus the explanation text", "should_trigger": true, "split": "train"},
+    {"query": "trace xstructured parsing as OpenTelemetry spans and test the chain offline without an API key", "should_trigger": true, "split": "train"},
+    {"query": "my deep agent should end with a validated research summary but keep its prose answer", "should_trigger": true, "split": "validation"},
+    {"query": "pass a tenant into my pydantic validators through the xstructured run config", "should_trigger": true, "split": "validation"},
+    {"query": "let the model answer with either an order or a refund payload and tell me which one it picked", "should_trigger": true, "split": "validation"},
+    {"query": "TypeError: Cannot add xstructured instructions to input of type dict when using a prompt template", "should_trigger": true, "split": "validation"},
+    {"query": "write a custom JsonDecoder for xstructured that accepts python literals and pass its contract tests", "should_trigger": false, "split": "train"},
+    {"query": "send xstructured parse metrics to prometheus with my own Observer subclass", "should_trigger": false, "split": "train"},
+    {"query": "use OpenAI's native json_schema response_format to return only an object, no prose needed", "should_trigger": false, "split": "train"},
+    {"query": "validate a JSON config file against a pydantic model at startup", "should_trigger": false, "split": "train"},
+    {"query": "build a RAG pipeline with a vector store and reranker in LangChain", "should_trigger": false, "split": "train"},
+    {"query": "fine-tune a model to always produce JSON", "should_trigger": false, "split": "train"},
+    {"query": "our custom xstructured RecoveryStrategy fails test_first_candidate_is_the_text_as_given", "should_trigger": false, "split": "validation"},
+    {"query": "parse XML responses from a SOAP API in python", "should_trigger": false, "split": "validation"},
+    {"query": "set up OpenTelemetry auto-instrumentation for a Django app", "should_trigger": false, "split": "validation"},
+    {"query": "add a tool to my LangGraph agent that calls a weather API", "should_trigger": false, "split": "validation"}
+  ]
+}
