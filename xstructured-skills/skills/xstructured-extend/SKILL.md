@@ -18,7 +18,7 @@ compatibility: >-
   xstructured). The templates and scripts run offline and need no model
   credentials.
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
   documentation: "https://xstructured.readthedocs.io/en/latest/guide/extension-points/"
 ---
 

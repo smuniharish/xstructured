@@ -22,7 +22,7 @@ assert result.value == Answer(value=42)
 assert not result.recovered
 ```
 
-![Recovery pipeline](../assets/diagrams/recovery-pipeline.png){ .diagram width="570" }
+![Recovery pipeline](../assets/diagrams/recovery-pipeline.png){ .diagram width="438" }
 
 ## Conservative recovery
 

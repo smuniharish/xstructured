@@ -1,17 +1,5 @@
-sequenceDiagram
-    participant UI as Caller
-    participant X as XStructuredRunnable
-    participant M as Wrapped Runnable
-    participant D as StreamDecoder
-
-    UI->>X: stream(input)
-    X->>M: stream(prepared input)
-    loop every chunk
-        M-->>X: chunk
-        X->>D: feed(text)
-        D-->>X: events
-        X-->>UI: TEXT_DELTA<br/>STRUCTURED_*
-    end
-    X->>D: finalize()
-    X-->>UI: RESULT
-    Note over X,D: The payload is validated once,<br/>as soon as the envelope closes.
+flowchart TB
+    runnable["LangChain Runnable"] --> chunks["Response chunks"]
+    chunks --> xs["xstructured streaming"]
+    xs --> events["Text, structured and final result events"]
+    events --> caller["Caller"]

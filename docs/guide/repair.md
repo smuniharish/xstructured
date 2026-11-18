@@ -6,7 +6,7 @@
 substrings of the response. When a response is genuinely invalid, you can opt in to
 *repair*, which sends the response back to a model for correction.
 
-![Repair flow](../assets/diagrams/repair-flow.png){ .diagram width="609" }
+![Repair flow](../assets/diagrams/repair-flow.png){ .diagram width="323" }
 
 Repair is strictly opt-in and bounded:
 

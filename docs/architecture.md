@@ -6,15 +6,15 @@
 
 | Component | Module | Responsibility |
 | --- | --- | --- |
-| `XStructuredRunnable` | `xstructured.langchain` | Adds instructions, runs the wrapped Runnable as a traced child run, parses, optionally repairs, and builds results. |
+| `XStructuredRunnable` | `xstructured.langchain` | Composes a LangChain Runnable with structured instructions and validated results. |
 | `XStructuredOutputParser` | `xstructured.langchain` | An LCEL output parser that builds the same results from text or messages. |
-| `XStructuredMiddleware` | `xstructured.agents` | Agent middleware: adds instructions to the system prompt, validates the final answer, repairs it with the agent's own model, and sets `structured_response`. |
+| `XStructuredMiddleware` | `xstructured.agents` | Adds the structured response contract to agent output and sets `structured_response`. |
 | Extension points | `xstructured.contracts` | Abstract base classes and defaults for instructions, injection, text extraction, recovery, decoding, repair prompts, and observers. |
 | `OpenTelemetryObserver` | `xstructured.otel` | One span per call. |
 | Testing kit | `xstructured.testing` | `ScriptedChatModel` and contract test suites. |
-| `StructuredParser` | `xstructured.parser` | Envelope extraction, conservative recovery, strict JSON, Pydantic validation. |
+| `StructuredParser` | `xstructured.parser` | Extracts and validates structured data from a response. |
 | `EnvelopeScanner`, `EnvelopeSpec` | `xstructured.envelope` | Incremental, JSON-aware envelope detection. |
-| `StreamDecoder` | `xstructured.streaming` | Maps scanner output to ordered `StreamEvent` values; validates on close. |
+| `StreamDecoder` | `xstructured.streaming` | Interprets streamed responses as ordered `StreamEvent` values. |
 | Schema helpers | `xstructured.schema` | Introspection, Pydantic options, instructions, named schemas, fingerprints. |
 | Configuration, results, errors | `xstructured.core` | Frozen configuration models, result types, the exception hierarchy. |
 
@@ -24,19 +24,13 @@ never loads their optional dependencies.
 
 ## Request lifecycle
 
-![Request lifecycle](assets/diagrams/request-lifecycle.png){ .diagram width="653" }
+![Request lifecycle](assets/diagrams/request-lifecycle.png){ .diagram width="656" }
 
-1. The input is normalized and the schema instructions are added (by the
-   `InstructionInjector`, or to the system prompt by the middleware).
-2. The wrapped Runnable runs as a child run with the same configuration (callbacks,
-   tags, metadata, and recursion limits).
-3. The parser locates the envelope, tries the `RecoveryStrategy`'s candidates in
-   order, decodes each with the `JsonDecoder`, and validates in Pydantic's JSON mode.
-4. If validation fails and repair is configured, the repair Runnable is asked for a
-   corrected response, at most `max_attempts` times, and every response is validated by
-   the same parser.
-5. The result combines the prose, the validated value, the raw output, and metadata,
-   and the `Observer`, if any, records the outcome.
+The wrapper adds schema instructions to the request and runs the supplied
+Runnable. It then extracts the response and validates it against the Pydantic
+schema. Optional repair can make additional, bounded model calls when validation
+fails. The result contains prose, validated data, the raw output, and metadata.
+LangChain configuration and callbacks remain available to the wrapped Runnable.
 
 Streaming follows the same steps incrementally: the
 [stream decoder](guide/streaming.md) validates the payload once, when its envelope closes,
@@ -47,12 +41,8 @@ and the final `RESULT` event matches what `ainvoke` would return.
 **Validation is the authority.** Recovery only selects a substring of the response and
 repair only replaces it; neither ever relaxes the schema.
 
-**Linear, bounded work.** Envelope scanning, string tracking, and nesting checks run as
-single compiled-regex passes whose cost grows linearly with input size, and every stage
-enforces a configured limit.
-
-**One parse per response.** The schema is introspected once per wrapper, and a streamed
-payload is validated exactly once.
+**Bounded processing.** Configurable limits constrain untrusted input and
+structured payloads.
 
 **Native LangChain behavior.** The wrapper is a standard Runnable, the parser a
 standard output parser, and the middleware a standard agent middleware: they are

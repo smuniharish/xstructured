@@ -110,22 +110,42 @@ width (at most 656 pixels) so its text matches the page.
 
 ## Releases
 
-Releases follow [semantic versioning](https://semver.org/). To publish one:
+Releases follow [semantic versioning](https://semver.org/) and are performed
+manually by a maintainer. CI does not publish packages or create releases.
 
 1. Set the version in `pyproject.toml` and `metadata.version` in both Agent
-   Skills, `xstructured-skills/skills/xstructured/SKILL.md` and
-   `xstructured-skills/skills/xstructured-extend/SKILL.md`, then run
-   `uv lock`. A test fails until the versions match.
-2. Move the changelog entries under a heading with the version and date.
-3. Merge to `master`, then publish a GitHub release whose tag is the version
-   with a `v` prefix, such as `v1.0.0`.
+   Skills, then run `uv lock`. Move the changelog entries under a heading with
+   the version and release date.
+2. Review and merge the release changes, and confirm the normal CI checks.
+3. Build the wheel and source distribution into an empty release directory:
 
-The [release workflow](https://github.com/smuniharish/xstructured/blob/master/.github/workflows/release.yml) checks that the tag
-matches the version, builds and checks the distributions, and publishes them
-to PyPI with trusted publishing, so no API token is stored in the repository.
-A maintainer adds the workflow as a trusted publisher in the PyPI project
-settings (repository `smuniharish/xstructured`, workflow `release.yml`,
-environment `pypi`).
+   ```bash
+   uv build --out-dir dist/release
+   uvx twine check --strict dist/release/*
+   ```
+
+4. Inspect the distribution names and metadata. For example, the following
+   prints the wheel's metadata; inspect the source archive as well:
+
+   ```bash
+   python -c "import glob, zipfile; \
+   p = glob.glob('dist/release/*.whl'); assert len(p) == 1; \
+   z = zipfile.ZipFile(p[0]); \
+   n = next(n for n in z.namelist() if n.endswith('.dist-info/METADATA')); \
+   print(z.read(n).decode())"
+   tar -tf dist/release/*.tar.gz
+   ```
+
+5. After reviewing the artifacts, publish them **manually** using a securely
+   configured PyPI credential. See the
+   [`uv publish` guide](https://docs.astral.sh/uv/guides/package/#publishing-your-package)
+   for authentication; do not commit credentials.
+
+   ```bash
+   uv publish dist/release/*
+   ```
+6. Create the GitHub release and its `v`-prefixed tag manually, using the
+   reviewed changelog. Do not configure automated PyPI publishing.
 
 ## Security reports
 

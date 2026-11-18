@@ -114,6 +114,33 @@ Both skills teach the agent the rules that keep an integration correct:
 - bound repair, and never loop on `ParseError` by hand;
 - never weaken validation or a contract test to make a test pass.
 
+## Optional upstream skills
+
+The following independently maintained skills can complement xstructured. They
+are optional and do not install Python dependencies or configure providers.
+The [skills CLI](https://github.com/vercel-labs/skills) requires Node.js
+22.20 or later and lets you choose which agents receive the skills.
+
+| Ecosystem | Skill | Purpose |
+| --- | --- | --- |
+| Pydantic | [`pydantic`](https://github.com/pydantic/skills/tree/main/skills/pydantic) | Model validation and serialization. |
+| LangChain, LangGraph and Deep Agents | [`langchain-build-agent`](https://github.com/langchain-ai/langchain-skills/tree/main/skills/langchain-build-agent) | Building and modifying applications using the LangChain ecosystem. |
+| LangSmith | [`langchain-agent-tracing`](https://github.com/langchain-ai/langchain-skills/tree/main/skills/langchain-agent-tracing), [`langchain-agent-monitoring`](https://github.com/langchain-ai/langchain-skills/tree/main/skills/langchain-agent-monitoring), [`langchain-eval-engineering`](https://github.com/langchain-ai/langchain-skills/tree/main/skills/langchain-eval-engineering) | Tracing, monitoring and evaluations where the corresponding LangSmith services are used. |
+
+Install the relevant skill in the current project:
+
+```bash
+npx skills add pydantic/skills --skill pydantic
+npx skills add langchain-ai/langchain-skills --skill langchain-build-agent
+```
+
+See the [Pydantic skill repository](https://github.com/pydantic/skills) and
+[LangChain skill repository](https://github.com/langchain-ai/langchain-skills)
+for their current inventories and agent-specific installation options. Other
+Pydantic AI and Logfire skills are available upstream; neither integration is
+required by xstructured. Provider credentials or LangSmith access may be
+needed when using the corresponding services, not to install these skills.
+
 ## Next steps
 
 <div class="grid cards" markdown>

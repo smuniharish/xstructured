@@ -6,7 +6,7 @@ Calling `astream()` (or `stream()`) on a wrapped Runnable yields ordered
 `StreamEvent` values while the model is still generating. Text can be shown immediately, and the
 structured value is validated the moment its envelope closes.
 
-![Streaming protocol](../assets/diagrams/streaming-protocol.png){ .diagram width="628" }
+![Streaming protocol](../assets/diagrams/streaming-protocol.png){ .diagram width="307" }
 
 | Event | Meaning | Field |
 | --- | --- | --- |

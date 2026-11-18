@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 1.0.1 (unreleased)
+
+### Changed
+
+- Updated the dependency lock and development and documentation tools.
+- Clarified public architecture diagrams and documented optional upstream
+  Agent Skills.
+- Replaced automated PyPI publishing with a maintainer-controlled release
+  procedure.
+
 ## [1.0.0] - 2026-11-09
 
 ### Added

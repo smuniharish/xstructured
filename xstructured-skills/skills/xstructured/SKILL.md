@@ -20,7 +20,7 @@ compatibility: >-
   xstructured[langgraph], tracing needs xstructured[otel].
   scripts/verify_setup.py runs offline in the project's Python environment.
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
   documentation: "https://xstructured.readthedocs.io"
 ---
 

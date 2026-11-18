@@ -18,7 +18,7 @@ agent middleware, and output parser combine them, and each is public for use on 
 | Operations | result metadata, `Observer`, tracing | [Observability](observability.md) |
 | Testing | `ScriptedChatModel`, contract suites | [Testing](testing.md) |
 
-![Request lifecycle](../assets/diagrams/request-lifecycle.png){ .diagram width="653" }
+![Request lifecycle](../assets/diagrams/request-lifecycle.png){ .diagram width="656" }
 
 The contract behind every layer is the same:
 
