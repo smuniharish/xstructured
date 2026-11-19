@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 1.0.1 (unreleased)
 
+### Added
+
+- Live PyPI download badges, including all countries with non-zero counts, in
+  the README and documentation home page.
+
 ### Changed
 
 - Updated the dependency lock and development and documentation tools.
